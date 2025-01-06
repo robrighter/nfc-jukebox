@@ -33,8 +33,7 @@ class KeyPoller:
         return None
 
 class MP3Player:
-    def __init__(self, directory):
-        self.load_directory(directory)
+    def __init__(self):
         self.process = None
         self.playing = False
         self.paused = False
@@ -52,6 +51,21 @@ class MP3Player:
             raise ValueError(f"No MP3 files found in directory: {directory}")
             
         self.current_track = 0
+        
+    def prompt_for_directory(self):
+        while True:
+            print("\rEnter directory path containing MP3 files:")
+            try:
+                directory = input().strip()
+                self.load_directory(directory)
+                print(f"Found {len(self.playlist)} MP3 files")
+                return
+            except ValueError as e:
+                print(f"Error: {str(e)}")
+                print("Please try again.")
+            except Exception as e:
+                print(f"Error: {str(e)}")
+                print("Please try again.")
         
     def change_directory(self):
         # Switch to normal terminal mode temporarily
@@ -150,6 +164,17 @@ class MP3Player:
             self.next_track()
         
     def run(self):
+        # Check if mpg123 is installed
+        try:
+            subprocess.run(["which", "mpg123"], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            print("Error: mpg123 is not installed. Please install it using:")
+            print("sudo apt-get install mpg123")
+            sys.exit(1)
+
+        # Get initial directory
+        self.prompt_for_directory()
+        
         print("\nMP3 Player Controls:")
         print("p - Play/Pause")
         print("n - Next track")
@@ -198,23 +223,5 @@ class MP3Player:
                     return
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python mp3_player.py <directory>")
-        sys.exit(1)
-        
-    directory = sys.argv[1]
-    
-    # Check if mpg123 is installed
-    try:
-        subprocess.run(["which", "mpg123"], check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        print("Error: mpg123 is not installed. Please install it using:")
-        print("sudo apt-get install mpg123")
-        sys.exit(1)
-        
-    try:
-        player = MP3Player(directory)
-        player.run()
-    except ValueError as e:
-        print(str(e))
-        sys.exit(1)
+    player = MP3Player()
+    player.run()
