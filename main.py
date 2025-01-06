@@ -34,31 +34,60 @@ class KeyPoller:
 
 class MP3Player:
     def __init__(self):
+        self.base_dir = os.path.join('.', 'music')
         self.process = None
         self.playing = False
         self.paused = False
         self.current_position = 0
         
-    def load_directory(self, directory):
+        # Ensure base music directory exists
+        if not os.path.exists(self.base_dir):
+            os.makedirs(self.base_dir)
+        
+    def get_available_playlists(self):
+        # Get all subdirectories in the music folder
+        try:
+            subdirs = [d for d in os.listdir(self.base_dir) 
+                      if os.path.isdir(os.path.join(self.base_dir, d))]
+            return sorted(subdirs)
+        except Exception:
+            return []
+        
+    def load_directory(self, subdir):
+        # Convert subdir to full path
+        full_path = os.path.join(self.base_dir, subdir)
+        
         # Validate and load the new directory
-        if not os.path.isdir(directory):
-            raise ValueError(f"Error: {directory} is not a valid directory")
+        if not os.path.isdir(full_path):
+            raise ValueError(f"Error: {subdir} is not a valid subdirectory in ./music")
             
-        self.directory = directory
-        self.playlist = sorted(glob.glob(os.path.join(directory, "*.mp3")))
+        self.current_subdir = subdir
+        self.playlist = sorted(glob.glob(os.path.join(full_path, "*.mp3")))
         
         if not self.playlist:
-            raise ValueError(f"No MP3 files found in directory: {directory}")
+            raise ValueError(f"No MP3 files found in ./music/{subdir}")
             
         self.current_track = 0
         
     def prompt_for_directory(self):
         while True:
-            print("\rEnter directory path containing MP3 files:")
+            # Get available playlists
+            playlists = self.get_available_playlists()
+            
+            if not playlists:
+                print("\rNo subdirectories found in ./music")
+                print("Please create a subdirectory with MP3 files and try again")
+                sys.exit(1)
+                
+            print("\rAvailable playlists:")
+            for playlist in playlists:
+                print(f"  - {playlist}")
+            
+            print("\rEnter playlist name:")
             try:
-                directory = input().strip()
-                self.load_directory(directory)
-                print(f"Found {len(self.playlist)} MP3 files")
+                subdir = input().strip()
+                self.load_directory(subdir)
+                print(f"Found {len(self.playlist)} MP3 files in ./music/{subdir}")
                 return
             except ValueError as e:
                 print(f"Error: {str(e)}")
@@ -72,8 +101,14 @@ class MP3Player:
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.old_settings)
         
         try:
-            print("\rEnter new directory path:")
-            new_directory = input().strip()
+            # Show available playlists
+            playlists = self.get_available_playlists()
+            print("\rAvailable playlists:")
+            for playlist in playlists:
+                print(f"  - {playlist}")
+            
+            print("\rEnter playlist name:")
+            new_subdir = input().strip()
             
             # Stop current playback
             if self.process:
@@ -82,8 +117,8 @@ class MP3Player:
                 self.process = None
             
             # Try to load the new directory
-            self.load_directory(new_directory)
-            print(f"\rChanged to directory: {new_directory}")
+            self.load_directory(new_subdir)
+            print(f"\rChanged to playlist: {new_subdir}")
             print(f"Found {len(self.playlist)} MP3 files")
             
             # Start playing first track in new directory
@@ -128,7 +163,7 @@ class MP3Player:
     def show_now_playing(self):
         sys.stdout.write('\r' + ' ' * 80 + '\r')  # Clear line
         current_file = Path(self.playlist[self.current_track]).name
-        print(f"Now playing: {current_file}")
+        print(f"Now playing: [{self.current_subdir}] {current_file}")
         print(f"Track {self.current_track + 1} of {len(self.playlist)}")
         sys.stdout.flush()
         
@@ -179,7 +214,7 @@ class MP3Player:
         print("p - Play/Pause")
         print("n - Next track")
         print("b - Previous track")
-        print("c - Change directory")
+        print("c - Change playlist")
         print("q - Quit")
         
         # Store the initial terminal settings for directory change
