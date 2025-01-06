@@ -181,19 +181,15 @@ class MP3Player:
         print("b - Previous track")
         print("c - Change directory")
         print("q - Quit")
-        print("\nPress any key to begin...")
         
         # Store the initial terminal settings for directory change
         self.old_settings = termios.tcgetattr(sys.stdin.fileno())
         
+        # Start playback immediately
+        self.start_time = time.time()
+        self.play_current_track()
+        
         with KeyPoller() as poller:
-            # Wait for initial keypress
-            while poller.poll() is None:
-                pass
-            
-            self.start_time = time.time()
-            self.play_current_track()
-            
             while True:
                 try:
                     self.check_if_track_ended()
