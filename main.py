@@ -9,6 +9,37 @@ import termios
 import tty
 import select
 
+import RPi.GPIO as GPIO
+from mfrc522 import SimpleMFRC522
+
+
+LED_PIN = 24
+
+gpio_wait = True
+print("Waiting for GPIO ...")
+while gpio_wait:
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(LED_PIN, GPIO.OUT)
+        gpio_wait = False
+    except Exception:
+        time.sleep(100)
+        pass
+
+print("GPIO setup.")
+print("setting up RFID Reader...")
+reader = SimpleMFRC522()
+print("RFID reader setup.")
+
+def set_play_led(is_on):
+    if is_on:
+        GPIO.output(LED_PIN, GPIO.HIGH)
+    else:
+        GPIO.output(LED_PIN, GPIO.LOW)
+
+set_play_led(False)
+
 class KeyPoller:
     def __enter__(self):
         # Save the terminal settings
@@ -63,7 +94,7 @@ class MP3Player:
             
         self.current_subdir = subdir
         self.playlist = sorted(glob.glob(os.path.join(full_path, "*.mp3")))
-        
+        print(str(self.playlist))
         if not self.playlist:
             raise ValueError(f"No MP3 files found in ./music/{subdir}")
             
@@ -96,7 +127,7 @@ class MP3Player:
                 print(f"Error: {str(e)}")
                 print("Please try again.")
         
-    def change_directory(self):
+    def change_directory(self, new_subdir=None):
         # Switch to normal terminal mode temporarily
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.old_settings)
         
@@ -107,15 +138,17 @@ class MP3Player:
             for playlist in playlists:
                 print(f"  - {playlist}")
             
-            print("\rEnter playlist name:")
-            new_subdir = input().strip()
+            if new_subdir == None:
+                print("\rEnter playlist name:")
+                new_subdir = input().strip()
             
             # Stop current playback
             if self.process:
                 self.process.terminate()
                 self.process.wait()
                 self.process = None
-            
+            set_play_led(False)
+
             # Try to load the new directory
             self.load_directory(new_subdir)
             print(f"\rChanged to playlist: {new_subdir}")
@@ -140,16 +173,18 @@ class MP3Player:
             seek_arg = f"--seek {position}"
         else:
             seek_arg = ""
-            
-        command = f"mpg123 -q --control {seek_arg} {self.playlist[self.current_track]}"
+        
+        current_file = self.playlist[self.current_track]
+        command = ['mpg123', current_file]
         self.process = subprocess.Popen(
-            command.split(),
+            command,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
         self.playing = True
         self.paused = False
+        set_play_led(True)
         
     def play_current_track(self):
         if self.process:
@@ -170,11 +205,12 @@ class MP3Player:
     def toggle_play_pause(self):
         if not self.paused and self.process:
             try:
-                self.current_position = int(time.time() - self.start_time)
+                self.current_position = 0 # int(time.time() - self.start_time)
                 self.process.terminate()
                 self.process.wait()
                 self.process = None
                 self.paused = True
+                set_play_led(False)
                 print("\rPaused playback")
             except Exception as e:
                 print(f"\rError pausing: {e}")
@@ -182,6 +218,7 @@ class MP3Player:
             try:
                 self.start_playback(self.current_position)
                 self.paused = False
+                set_play_led(True)
                 print("\rResumed playback")
             except Exception as e:
                 print(f"\rError resuming: {e}")
@@ -200,6 +237,8 @@ class MP3Player:
         
     def run(self):
         # Check if mpg123 is installed
+        current_dir = None
+
         try:
             subprocess.run(["which", "mpg123"], check=True, capture_output=True)
         except subprocess.CalledProcessError:
@@ -208,7 +247,7 @@ class MP3Player:
             sys.exit(1)
 
         # Get initial directory
-        self.prompt_for_directory()
+        # self.prompt_for_directory()
         
         print("\nMP3 Player Controls:")
         print("p - Play/Pause")
@@ -222,13 +261,19 @@ class MP3Player:
         
         # Start playback immediately
         self.start_time = time.time()
-        self.play_current_track()
+        # self.play_current_track()
         
         with KeyPoller() as poller:
             while True:
                 try:
                     self.check_if_track_ended()
+
+                    id, new_dir = reader.read_no_block()
+                    if new_dir != None:
+                        new_dir = new_dir.strip()
                     
+                    
+                    # print("Read from RFID: "+ str(new_dir))
                     char = poller.poll()
                     if char:
                         if char == 'p':
@@ -240,12 +285,18 @@ class MP3Player:
                         elif char == 'c':
                             self.change_directory()
                         elif char == 'q':
+                            set_play_led(False)
                             if self.process:
                                 self.process.terminate()
                                 self.process.wait()
                             print("\rGoodbye!")
                             return
-                            
+                    # print("new_dir="+str(new_dir)+ " current_dir="+str(current_dir)) 
+                    if new_dir != current_dir:
+                        if new_dir != None:
+                            current_dir = new_dir
+                            self.change_directory(current_dir)
+                           
                 except KeyboardInterrupt:
                     if self.process:
                         self.process.terminate()
