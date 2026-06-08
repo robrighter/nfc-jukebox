@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="card-grid">
+  <div class="card">
+    <h2>NFC Reader</h2>
+    <p>
+      Status:
+      <span class="badge badge-{{ 'ok' if nfc_status.mode in ('scanning', 'idle') else 'warn' }}">
+        {{ nfc_status.mode }}
+      </span>
+    </p>
+    <p>NFC hardware: {{ 'available' if nfc_status.nfc_available else 'stub mode' }}</p>
+    <p>GPIO: {{ 'available' if nfc_status.gpio_available else 'stub mode' }}</p>
+  </div>
+
+  <div class="card">
+    <h2>Alexa</h2>
+    <p>
+      Status:
+      <span class="badge badge-{{ 'ok' if alexa_connected else 'warn' }}">
+        {{ 'Connected' if alexa_connected else 'Disconnected' }}
+      </span>
+    </p>
+    <p>Device: <strong>{{ alexa_device_name }}</strong></p>
+    <p>Template: <code>{{ command_template }}</code></p>
+  </div>
+</div>
+
+<h2>Send Alexa Command</h2>
+<div class="form-card command-card">
+  <div class="command-row">
+    <input
+      type="text"
+      id="alexa-command-input"
+      class="form-input"
+      placeholder="e.g. play the album Abbey Road by The Beatles"
+      autocomplete="off"
+      onkeydown="if(event.key==='Enter') sendAlexaCommand()"
+    >
+    <button class="btn" onclick="sendAlexaCommand()">Send</button>
+  </div>
+  <div id="alexa-command-result" class="alert" style="display:none; margin-top:0.75rem;"></div>
+</div>
+
+<h2>Recent Scans</h2>
+{% if recent_scans %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Album</th>
+        <th>Command</th>
+        <th>Status</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for scan in recent_scans %}
+      <tr>
+        <td>{{ scan.album_text }}</td>
+        <td><code>{{ scan.alexa_command }}</code></td>
+        <td>
+          <span class="badge badge-{{ 'ok' if scan.status == 'success' else 'err' }}">
+            {{ scan.status }}
+          </span>
+          {% if scan.error_message %}
+          <span class="err-msg" title="{{ scan.error_message }}">&#9432;</span>
+          {% endif %}
+        </td>
+        <td class="muted">{{ scan.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No scans yet. Place an NFC tag on the reader to get started.</p>
+{% endif %}
+
+<div class="actions">
+  <a href="/albums" class="btn">Manage Albums</a>
+  <a href="/albums/new" class="btn btn-secondary">Add Album</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function sendAlexaCommand() {
+  const input = document.getElementById('alexa-command-input');
+  const result = document.getElementById('alexa-command-result');
+  const command = input.value.trim();
+  if (!command) { input.focus(); return; }
+
+  result.style.display = 'none';
+  const btn = document.querySelector('.command-card .btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const resp = await fetch('/api/alexa/command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({command})
+    });
+    const data = await resp.json();
+    result.style.display = 'block';
+    if (data.ok) {
+      result.className = 'alert alert-ok';
+      result.textContent = 'Sent: “' + data.command + '”';
+      input.value = '';
+    } else {
+      result.className = 'alert alert-error';
+      result.textContent = 'Error: ' + data.error;
+    }
+  } catch (e) {
+    result.style.display = 'block';
+    result.className = 'alert alert-error';
+    result.textContent = 'Request failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send';
+    input.focus();
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Albums — NFC Jukebox{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Albums</h1>
+  <a href="/albums/new" class="btn">+ Add Album</a>
+</div>
+
+{% if request.query_params.get('added') %}
+<div class="alert alert-ok">Album added.</div>
+{% endif %}
+{% if request.query_params.get('updated') %}
+<div class="alert alert-ok">Album updated.</div>
+{% endif %}
+{% if request.query_params.get('deleted') %}
+<div class="alert alert-ok">Album deleted.</div>
+{% endif %}
+
+{% if albums %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Album Text</th>
+        <th>Notes</th>
+        <th>Last Written</th>
+        <th>Last Scanned</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for album in albums %}
+      <tr>
+        <td><strong>{{ album.album_text }}</strong></td>
+        <td class="muted">{{ album.notes or '' }}</td>
+        <td class="muted">{{ album.last_written_at or '—' }}</td>
+        <td class="muted">{{ album.last_scanned_at or '—' }}</td>
+        <td class="actions-cell">
+          <a href="/albums/{{ album.id }}/write" class="btn btn-sm">Write Tag</a>
+          <a href="/albums/{{ album.id }}/edit" class="btn btn-sm btn-secondary">Edit</a>
+          <form method="post" action="/albums/{{ album.id }}/delete" class="inline-form"
+                onsubmit="return confirm('Delete ' + {{ album.album_text | tojson }} + '?')">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No albums yet. <a href="/albums/new">Add your first album</a>.</p>
+{% endif %}
+{% endblock %}

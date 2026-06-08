@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Settings — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+{% if message %}
+<div class="alert {% if 'Error' in message %}alert-error{% else %}alert-ok{% endif %}">
+  {{ message }}
+</div>
+{% endif %}
+
+<form method="post" action="/settings" class="form-card">
+  <div class="form-group">
+    <label for="alexa_command_template">Alexa Command Template</label>
+    <input
+      type="text"
+      id="alexa_command_template"
+      name="alexa_command_template"
+      value="{{ settings.alexa_command_template }}"
+      class="form-input"
+      placeholder="play the album {album}"
+      oninput="updatePreview()"
+      required
+    >
+    <p class="form-hint">
+      Use <code>{album}</code> as the placeholder for the album text read from the NFC tag.
+      Examples: <code>play the album {album}</code>, <code>play {album} on Spotify</code>
+    </p>
+  </div>
+
+  <div class="form-group">
+    <label>Live Preview</label>
+    <div class="preview-box">
+      Alexa, <span id="template-preview">{{ settings.alexa_command_template }}</span>
+    </div>
+    <p class="form-hint">Preview uses "Abbey Road by The Beatles" as the example album.</p>
+  </div>
+
+  <div class="form-group">
+    <label>Alexa Device</label>
+    <p class="form-value">{{ alexa_device_name }}</p>
+    <p class="form-hint">Set via <code>ALEXA_DEVICE_NAME</code> in your <code>.env</code> file.</p>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn">Save Settings</button>
+    <button type="button" class="btn btn-secondary" onclick="testCommand()">Send Test Command</button>
+  </div>
+</form>
+
+<div id="test-result" class="alert" style="display:none; margin-top: 1rem;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updatePreview() {
+  const template = document.getElementById('alexa_command_template').value;
+  const preview = template.replace('{album}', 'Abbey Road by The Beatles');
+  document.getElementById('template-preview').textContent = preview;
+}
+
+async function testCommand() {
+  const resultEl = document.getElementById('test-result');
+  resultEl.style.display = 'none';
+  try {
+    const resp = await fetch('/settings/test-command', {method: 'POST'});
+    const data = await resp.json();
+    resultEl.style.display = 'block';
+    if (data.ok) {
+      resultEl.className = 'alert alert-ok';
+      resultEl.textContent = 'Test command sent: "' + data.command + '"';
+    } else {
+      resultEl.className = 'alert alert-error';
+      resultEl.textContent = 'Error: ' + data.error;
+    }
+  } catch (e) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert alert-error';
+    resultEl.textContent = 'Request failed: ' + e.message;
+  }
+}
+
+updatePreview();
+</script>
+{% endblock %}

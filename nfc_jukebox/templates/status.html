@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Status — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>System Status</h1>
+
+<div class="card-grid">
+  <div class="card">
+    <h2>NFC Reader</h2>
+    <table class="status-table">
+      <tr><th>Mode</th><td><span class="badge badge-{{ 'ok' if nfc_status.mode in ('idle','scanning') else 'warn' }}">{{ nfc_status.mode }}</span></td></tr>
+      <tr><th>NFC hardware</th><td>{{ 'Available' if nfc_status.nfc_available else 'Stub (dev mode)' }}</td></tr>
+      <tr><th>GPIO</th><td>{{ 'Available' if nfc_status.gpio_available else 'Stub (dev mode)' }}</td></tr>
+      <tr><th>Lock held</th><td>{{ 'Yes' if nfc_status.lock_held else 'No' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Alexa</h2>
+    <table class="status-table">
+      <tr><th>Connection</th><td><span class="badge badge-{{ 'ok' if alexa_connected else 'warn' }}">{{ 'Connected' if alexa_connected else 'Disconnected' }}</span></td></tr>
+      <tr><th>Device</th><td>{{ alexa_device_name }}</td></tr>
+      <tr><th>Command template</th><td><code>{{ command_template }}</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="actions">
+  <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}

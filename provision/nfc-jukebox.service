@@ -1,0 +1,18 @@
+[Unit]
+Description=NFC Jukebox Alexa Appliance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/nfc-jukebox
+EnvironmentFile=/opt/nfc-jukebox/.env
+ExecStart=/opt/nfc-jukebox/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

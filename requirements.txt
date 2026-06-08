@@ -1,0 +1,10 @@
+aioamazondevices
+aiohttp
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+python-dotenv
+pydantic
+mfrc522
+RPi.GPIO

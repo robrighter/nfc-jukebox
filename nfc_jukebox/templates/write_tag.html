@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Write NFC Tag — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>Write NFC Tag</h1>
+
+<div class="form-card">
+  <p class="write-album-label">Ready to write:</p>
+  <p class="write-album-text">{{ album.album_text }}</p>
+
+  <ol class="write-steps">
+    <li>Click <strong>Start Writing Tag</strong> below.</li>
+    <li>Place the NFC card flat on the reader.</li>
+    <li>Keep it still until this page says <strong>Done</strong>.</li>
+  </ol>
+
+  <div id="write-status" class="write-status write-status-idle">
+    <span id="write-status-text">Ready</span>
+  </div>
+
+  <div class="form-actions">
+    <button id="btn-start" class="btn" onclick="startWrite()">Start Writing Tag</button>
+    <button id="btn-cancel" class="btn btn-danger" style="display:none" onclick="cancelWrite()">Cancel</button>
+    <a href="/albums" class="btn btn-secondary">Back to Albums</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALBUM_ID = {{ album.id }};
+let pollInterval = null;
+
+async function startWrite() {
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-cancel').style.display = 'inline-block';
+  setStatus('waiting', 'Waiting for NFC tag… place tag on reader');
+
+  const resp = await fetch('/api/write-jobs', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({album_id: ALBUM_ID})
+  });
+
+  if (resp.status === 409) {
+    setStatus('error', 'Another write job is already in progress. Please wait.');
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-cancel').style.display = 'none';
+    return;
+  }
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    setStatus('error', 'Error: ' + (data.detail || resp.statusText));
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-cancel').style.display = 'none';
+    return;
+  }
+
+  pollInterval = setInterval(pollStatus, 1000);
+}
+
+async function pollStatus() {
+  try {
+    const resp = await fetch('/api/write-jobs/current');
+    const data = await resp.json();
+    switch (data.status) {
+      case 'waiting':
+        setStatus('waiting', 'Waiting for NFC tag… place tag on reader');
+        break;
+      case 'writing':
+        setStatus('writing', 'Writing tag… keep tag on reader!');
+        break;
+      case 'done':
+        clearInterval(pollInterval);
+        setStatus('done', 'Done! Tag written successfully.');
+        document.getElementById('btn-cancel').style.display = 'none';
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-start').textContent = 'Write Another Tag';
+        break;
+      case 'error':
+        clearInterval(pollInterval);
+        setStatus('error', 'Error: ' + (data.error_message || 'Unknown error'));
+        document.getElementById('btn-cancel').style.display = 'none';
+        document.getElementById('btn-start').disabled = false;
+        break;
+      case 'cancelled':
+        clearInterval(pollInterval);
+        setStatus('idle', 'Cancelled.');
+        document.getElementById('btn-cancel').style.display = 'none';
+        document.getElementById('btn-start').disabled = false;
+        break;
+    }
+  } catch (e) {
+    setStatus('error', 'Lost connection to server.');
+  }
+}
+
+async function cancelWrite() {
+  clearInterval(pollInterval);
+  await fetch('/api/write-jobs/current/cancel', {method: 'POST'});
+  setStatus('idle', 'Cancelled.');
+  document.getElementById('btn-cancel').style.display = 'none';
+  document.getElementById('btn-start').disabled = false;
+}
+
+function setStatus(state, message) {
+  const el = document.getElementById('write-status');
+  el.className = 'write-status write-status-' + state;
+  document.getElementById('write-status-text').textContent = message;
+}
+</script>
+{% endblock %}

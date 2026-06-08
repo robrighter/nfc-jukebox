@@ -1,0 +1,11 @@
+.env
+*.sqlite3
+*.db
+.alexa-login-data.json
+data/
+out/
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+.DS_Store

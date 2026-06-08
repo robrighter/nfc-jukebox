@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-card">
+  <div class="form-group">
+    <label for="album_text">Album Text <span class="req">*</span></label>
+    <input
+      type="text"
+      id="album_text"
+      name="album_text"
+      required
+      value="{{ album['album_text'] if album else '' }}"
+      placeholder="e.g. Abbey Road by The Beatles"
+      class="form-input"
+    >
+    <p class="form-hint">
+      This text will be written to the NFC tag and sent to Alexa as part of the command.
+    </p>
+  </div>
+
+  <div class="form-group">
+    <label for="notes">Notes</label>
+    <input
+      type="text"
+      id="notes"
+      name="notes"
+      value="{{ album['notes'] if album and album.get('notes') else '' }}"
+      placeholder="Optional notes"
+      class="form-input"
+    >
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn">Save</button>
+    <a href="/albums" class="btn btn-secondary">Cancel</a>
+    {% if album and album.get('id') %}
+    <a href="/albums/{{ album['id'] }}/write" class="btn btn-secondary">Write Tag</a>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
