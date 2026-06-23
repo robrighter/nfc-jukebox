@@ -37,8 +37,9 @@ Key settings:
 
 | Variable | Description |
 |---|---|
-| `AMAZON_EMAIL` | Your Amazon account email |
-| `AMAZON_PASSWORD` | Your Amazon account password |
+| `AMAZON_EMAIL` | Optional / blank — use the `/setup` browser flow instead |
+| `AMAZON_PASSWORD` | Optional / blank — never required with the `/setup` flow |
+| `AMAZON_DOMAIN` | Marketplace suffix: `com`, `co.uk`, `de`, … (default `com`) |
 | `ALEXA_DEVICE_NAME` | Name of your Echo device (must match Alexa app exactly) |
 | `ALEXA_COMMAND_TEMPLATE` | Command sent to Alexa (default: `play the album {album}`) |
 | `LED_PIN` | GPIO pin for status LED (default: 24) |
@@ -53,18 +54,28 @@ sudo systemctl restart nfc-jukebox.service
 
 ---
 
-## First Alexa Login
+## Connect Amazon (passkey-friendly)
 
-On first run, you must authenticate with Amazon:
+Connect your Amazon account from the web UI — no password is stored on the Pi.
+
+1. Open `http://nfc-jukebox.local:8080/setup`
+2. Click **Start Amazon Sign-In** and open the generated link
+3. Sign in to Amazon in your own browser (passkey supported)
+4. Copy the resulting `…/ap/maplanding?…` address-bar URL back into the page
+5. Click **Finish Connecting**
+
+The Pi exchanges the one-time authorization code for a **revocable device
+token** stored at `ALEXA_LOGIN_DATA_FILE`. Revoke it anytime from Amazon →
+*Manage Your Content and Devices → Devices*. To refresh an expired token, just
+re-run `/setup`.
+
+Once connected, list your devices to confirm the exact name for
+`ALEXA_DEVICE_NAME`:
 
 ```bash
 cd /opt/nfc-jukebox
 .venv/bin/python scripts/list_alexa_devices.py
 ```
-
-You will be prompted for your Amazon OTP (two-factor code). After login succeeds, the session is saved to `ALEXA_LOGIN_DATA_FILE` and future starts are automatic.
-
-Note the exact device name printed and set it as `ALEXA_DEVICE_NAME` in `.env`.
 
 ---
 

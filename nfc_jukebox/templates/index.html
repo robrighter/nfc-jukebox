@@ -3,6 +3,13 @@
 {% block content %}
 <h1>Dashboard</h1>
 
+{% if not alexa_connected %}
+<div class="alert alert-error">
+  Amazon account not connected. <a href="/setup">Connect your Amazon account</a>
+  to enable playback (passkey supported — no password stored on this device).
+</div>
+{% endif %}
+
 <div class="card-grid">
   <div class="card">
     <h2>NFC Reader</h2>

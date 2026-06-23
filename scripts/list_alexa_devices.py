@@ -20,13 +20,22 @@ async def main():
     print("Connecting to Amazon/Alexa...")
     await client.connect()
 
+    if not client.connected:
+        print(
+            "\nNot connected. Connect your Amazon account first via the web UI:\n"
+            "  http://nfc-jukebox.local:8080/setup\n"
+            "(passkey supported — no password is stored on the Pi)."
+        )
+        await client.close()
+        return
+
     devices = await client.list_devices()
     if devices:
         print("\nAvailable Alexa devices:")
         for name in devices:
             print(f"  - {name}")
     else:
-        print("No devices found or connection failed.")
+        print("No devices found.")
 
     await client.close()
 

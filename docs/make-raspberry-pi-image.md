@@ -12,6 +12,10 @@ Download from [raspberrypi.com/software](https://www.raspberrypi.com/software/) 
 2. Open Raspberry Pi Imager.
 3. **Choose Device**: Raspberry Pi 4
 4. **Choose OS**: Raspberry Pi OS (other) → **Raspberry Pi OS Lite (64-bit)**
+   - **Use the Trixie release** (Python 3.12+). The Alexa library
+     `aioamazondevices` requires Python ≥ 3.12 and will not install on the
+     older Bookworm release (Python 3.11). Check with `python3 --version`
+     after first boot — it should report 3.12 or newer.
 5. **Choose Storage**: your microSD / SSD
 6. Click **Edit Settings** (gear icon) and configure:
    - **Hostname**: `nfc-jukebox`
@@ -50,18 +54,22 @@ sudo nano /opt/nfc-jukebox/.env
 ```
 
 Set at minimum:
-- `AMAZON_EMAIL`
-- `AMAZON_PASSWORD`
 - `ALEXA_DEVICE_NAME` (exact name from the Alexa app)
 
-### 6. First Alexa Login
+Leave `AMAZON_EMAIL` / `AMAZON_PASSWORD` blank — you'll connect in the browser.
 
-```bash
-cd /opt/nfc-jukebox
-.venv/bin/python scripts/list_alexa_devices.py
+### 6. Connect Amazon (passkey-friendly)
+
+Open the setup page from any device on your network:
+
+```
+http://nfc-jukebox.local:8080/setup
 ```
 
-Enter your Amazon OTP when prompted. This saves login data so subsequent starts are automatic.
+Click **Start Amazon Sign-In**, open the generated link, sign in to Amazon in
+your own browser (passkey works), then copy the resulting `…/ap/maplanding?…`
+URL back into the page and click **Finish Connecting**. Only a revocable device
+token is stored on the Pi — your password never touches it.
 
 ### 7. Restart the Service
 

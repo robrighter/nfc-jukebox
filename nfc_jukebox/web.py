@@ -205,6 +205,66 @@ async def status_page(request: Request):
 
 # ---------- JSON API ----------
 
+@router.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request):
+    setup = request.app.state.setup_service
+    alexa = request.app.state.alexa
+    return templates.TemplateResponse(
+        "setup.html",
+        {
+            "request": request,
+            "is_complete": setup.is_complete(),
+            "alexa_connected": alexa.connected,
+            "login_url": setup.pending.login_url if setup.pending else None,
+        },
+    )
+
+
+@router.post("/api/setup/start")
+async def api_setup_start(request: Request):
+    setup = request.app.state.setup_service
+    try:
+        login_url = await setup.begin_login()
+        return JSONResponse({"ok": True, "login_url": login_url})
+    except Exception as exc:
+        logger.error("Setup start failed: %s", exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/api/setup/complete")
+async def api_setup_complete(request: Request):
+    setup = request.app.state.setup_service
+    alexa = request.app.state.alexa
+    body = await request.json()
+    redirect_url = (body.get("redirect_url") or "").strip()
+    if not redirect_url:
+        raise HTTPException(status_code=422, detail="redirect_url is required")
+    try:
+        await setup.complete_login(redirect_url)
+    except Exception as exc:
+        logger.error("Setup complete failed: %s", exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+    # Reconnect the Alexa client with the freshly saved tokens.
+    try:
+        await alexa.reconnect()
+    except Exception as exc:
+        logger.error("Reconnect after setup failed: %s", exc)
+
+    return JSONResponse({"ok": True, "connected": alexa.connected})
+
+
+@router.get("/api/setup/status")
+async def api_setup_status(request: Request):
+    setup = request.app.state.setup_service
+    alexa = request.app.state.alexa
+    return {
+        "is_complete": setup.is_complete(),
+        "connected": alexa.connected,
+        "in_progress": setup.pending is not None,
+    }
+
+
 @router.post("/api/alexa/command")
 async def api_alexa_command(request: Request):
     body = await request.json()

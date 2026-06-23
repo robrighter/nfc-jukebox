@@ -1,7 +1,6 @@
 """Alexa text command client using aioamazondevices."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from pathlib import Path
@@ -25,56 +24,59 @@ class AlexaTextCommandClient:
         self._device_name = device_name
         self._login_data_file = login_data_file
         self._api: Optional[object] = None
+        self._session: Optional[object] = None
         self._target_device: Optional[object] = None
         self._connected: bool = False
 
     async def connect(self) -> None:
-        """Authenticate with Amazon and locate the target device."""
-        if not self._email or not self._password:
-            logger.warning("Alexa credentials not configured — Alexa integration disabled")
+        """Connect to Alexa using saved login data (passkey setup flow).
+
+        Credentials are NOT required or used here. The browser-based setup flow
+        (see amazon_setup.py and /setup) produces the saved login-data file;
+        this method simply resumes that session. If no saved session exists,
+        the client stays disconnected and the web UI prompts the user to run
+        setup — the app keeps running either way.
+        """
+        login_data_path = Path(self._login_data_file)
+        if not login_data_path.exists():
+            logger.warning(
+                "No saved Amazon login data at %s — visit /setup to connect your "
+                "Amazon account (passkey supported).",
+                login_data_path,
+            )
             return
 
         try:
             from aioamazondevices.api import AmazonEchoApi  # type: ignore
         except ImportError:
             logger.error(
-                "aioamazondevices is not installed. Run: pip install aioamazondevices"
+                "aioamazondevices is not installed. Install requirements on a "
+                "Python 3.12+ runtime (Raspberry Pi OS Trixie ships 3.13)."
             )
             return
 
         try:
-            country_code = "US"
-            self._api = AmazonEchoApi(country_code, self._email, self._password)
+            login_data = json.loads(login_data_path.read_text())
+        except Exception as exc:
+            logger.error("Failed to read saved login data: %s", exc)
+            return
 
-            login_data_path = Path(self._login_data_file)
-            login_data: Optional[dict] = None
-            if login_data_path.exists():
-                try:
-                    login_data = json.loads(login_data_path.read_text())
-                    logger.info("Loaded saved Alexa login data from %s", login_data_path)
-                except Exception as exc:
-                    logger.warning("Failed to load login data: %s", exc)
+        try:
+            import aiohttp
 
-            if login_data:
-                await self._api.login_mode_stored_credentials(login_data)
-            else:
-                logger.info(
-                    "No saved Alexa login data found. Attempting interactive login..."
-                )
-                otp = await asyncio.to_thread(
-                    input, "Enter Amazon OTP code (or press Enter to skip): "
-                )
-                await self._api.login(otp.strip() or None)
-
-            # Persist login data for future use
-            try:
-                login_data_path.parent.mkdir(parents=True, exist_ok=True)
-                login_data_path.write_text(
-                    json.dumps(await self._api.get_login_data(), indent=2)
-                )
-                logger.info("Saved Alexa login data to %s", login_data_path)
-            except Exception as exc:
-                logger.warning("Could not save login data: %s", exc)
+            self._session = aiohttp.ClientSession()
+            # >>> LIBRARY INTEGRATION POINT: resume session from saved tokens.
+            # VERIFY ON PI against pinned aioamazondevices version. Researched
+            # constructor: AmazonEchoApi(client_session, login_email,
+            # login_password, login_data=..., save_to_file=...), with
+            # login_mode_stored_data() to resume from saved tokens.
+            self._api = AmazonEchoApi(
+                self._session,
+                self._email or "",
+                self._password or "",
+                login_data=login_data,
+            )
+            await self._api.login_mode_stored_data()
 
             await self._find_device()
             self._connected = True
@@ -129,7 +131,20 @@ class AlexaTextCommandClient:
                 await self._api.close()
             except Exception as exc:
                 logger.debug("Error closing Alexa API: %s", exc)
+        if self._session is not None:
+            try:
+                await self._session.close()
+            except Exception as exc:
+                logger.debug("Error closing aiohttp session: %s", exc)
+            self._session = None
         self._connected = False
+
+    async def reconnect(self) -> None:
+        """Tear down and reconnect — used after setup completes."""
+        await self.close()
+        self._api = None
+        self._target_device = None
+        await self.connect()
 
     async def list_devices(self) -> list[str]:
         """Return list of device names in the account."""

@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import db
 from .alexa_client import AlexaTextCommandClient
+from .amazon_setup import AmazonSetupService
 from .config import settings
 from .nfc_service import NfcService
 from .scanner import scanner_loop
@@ -55,10 +56,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Alexa connect failed: %s", exc)
 
+    setup_service = AmazonSetupService(
+        login_data_file=settings.ALEXA_LOGIN_DATA_FILE,
+        domain=settings.AMAZON_DOMAIN,
+    )
+
     scanner_task = asyncio.create_task(scanner_loop(nfc, alexa))
 
     app.state.nfc = nfc
     app.state.alexa = alexa
+    app.state.setup_service = setup_service
     app.state.scanner_task = scanner_task
     app.state.write_job: dict = {"active": False}
 

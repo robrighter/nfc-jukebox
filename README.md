@@ -58,33 +58,35 @@ For a full appliance install from scratch:
    ```bash
    sudo ./scripts/install_pi.sh
    ```
-4. **Configure** `/opt/nfc-jukebox/.env`
-5. **First Alexa login**:
-   ```bash
-   cd /opt/nfc-jukebox
-   .venv/bin/python scripts/list_alexa_devices.py
-   ```
+4. **Configure** `/opt/nfc-jukebox/.env` (set `ALEXA_DEVICE_NAME`; leave Amazon credentials blank)
+5. **Connect Amazon** in the web UI at `http://nfc-jukebox.local:8080/setup`
 6. **Open the web UI**: http://nfc-jukebox.local:8080
 
 Full guide: [docs/raspberry-pi-4-appliance-setup.md](docs/raspberry-pi-4-appliance-setup.md)
 
+> **Requires Raspberry Pi OS Trixie** (Python 3.12+). The Alexa library
+> `aioamazondevices` does not run on Bookworm's Python 3.11.
+
 ---
 
-## First Alexa Login
+## Connect Amazon (passkey-friendly, no password stored)
 
-The app uses [`aioamazondevices`](https://github.com/chemelli74/aioamazondevices) to send text commands to Alexa.
+The app uses [`aioamazondevices`](https://github.com/chemelli74/aioamazondevices) to send text commands to Alexa, authenticated with Amazon's OAuth device flow.
 
-On first run, authenticate interactively:
+**You never put your Amazon password on the Pi.** Instead:
 
-```bash
-python scripts/list_alexa_devices.py
-```
+1. Open `http://nfc-jukebox.local:8080/setup`
+2. Click **Start Amazon Sign-In** → open the generated link
+3. Sign in to Amazon **in your own browser** — your passkey works here
+4. Amazon lands you on a near-blank `…/ap/maplanding?…` page. Copy the full address-bar URL
+5. Paste it back into the setup page → **Finish Connecting**
 
-Enter your Amazon OTP when prompted. The session is saved to `ALEXA_LOGIN_DATA_FILE` for future use.
+The Pi exchanges the one-time authorization code for a **revocable device token** and stores only that. Revoke anytime from Amazon → *Manage Your Content and Devices → Devices*.
 
-Copy the exact device name shown and set it as `ALEXA_DEVICE_NAME` in `.env`.
+Then set `ALEXA_DEVICE_NAME` in `.env` to your Echo's exact name (the
+`scripts/list_alexa_devices.py` helper prints available names once connected).
 
-> **Note:** This uses an unofficial Amazon interface. If commands stop working after an Amazon update, delete `data/.alexa-login-data.json` and re-authenticate.
+> **Note:** This uses an unofficial Amazon interface. If commands stop working, re-run the `/setup` flow to refresh the token.
 
 ---
 
@@ -107,6 +109,7 @@ http://<raspberry-pi-ip>:8080
 | Add album | `/albums/new` |
 | Write NFC tag | `/albums/{id}/write` |
 | Settings | `/settings` |
+| Connect Amazon | `/setup` |
 | System status | `/status` |
 
 ---

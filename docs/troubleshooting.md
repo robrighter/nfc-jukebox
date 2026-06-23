@@ -25,17 +25,29 @@ sudo ./scripts/healthcheck.sh
 
 ### "Alexa client is not connected"
 
-- Check that `AMAZON_EMAIL` and `AMAZON_PASSWORD` are correct in `.env`.
-- Run the device discovery script to trigger fresh login:
-  ```bash
-  cd /opt/nfc-jukebox
-  .venv/bin/python scripts/list_alexa_devices.py
-  ```
-- If login fails, delete the stored login data and retry:
+- Connect your Amazon account via the web UI: `http://nfc-jukebox.local:8080/setup`
+  (passkey supported — no password stored on the Pi).
+- If a previous token has expired or broken, re-run the `/setup` flow to get a
+  fresh one. To start completely clean:
   ```bash
   rm /opt/nfc-jukebox/data/.alexa-login-data.json
-  .venv/bin/python scripts/list_alexa_devices.py
+  sudo systemctl restart nfc-jukebox.service
   ```
+  then open `/setup` again.
+
+### "aioamazondevices is not installed" / install fails
+
+- This library requires **Python 3.12+**. Confirm with `python3 --version`.
+- Raspberry Pi OS **Bookworm ships 3.11** and will not work — reflash with the
+  **Trixie** release (Python 3.13). See `docs/make-raspberry-pi-image.md`.
+
+### Setup page error about library internal methods
+
+- The passkey setup flow drives `aioamazondevices` OAuth internals. If you
+  bumped the library version and the method names changed, the `/setup` page
+  reports exactly which method to check. Update the two integration points in
+  `nfc_jukebox/amazon_setup.py` (clearly marked) or pin the version back to the
+  one in `requirements.txt`.
 
 ### "Target device not found"
 
@@ -52,12 +64,13 @@ sudo ./scripts/healthcheck.sh
 
 ### Login stops working after a while
 
-- Amazon sessions expire. Delete stored login data and re-authenticate:
+- Amazon device tokens can expire. Re-run the `/setup` flow to get a fresh
+  token — no password needed. If it still fails, clear the saved token first:
   ```bash
   rm /opt/nfc-jukebox/data/.alexa-login-data.json
   sudo systemctl restart nfc-jukebox.service
   ```
-  Check logs for the OTP prompt, or run `list_alexa_devices.py` interactively.
+  then open `http://nfc-jukebox.local:8080/setup`.
 
 ---
 

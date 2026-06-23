@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Connect Amazon — NFC Jukebox{% endblock %}
+{% block content %}
+<h1>Connect Amazon Account</h1>
+
+<div id="status-banner" class="alert {{ 'alert-ok' if alexa_connected else '' }}"
+     style="{{ '' if (is_complete or alexa_connected) else 'display:none;' }}">
+  {% if alexa_connected %}
+    Connected to Alexa.
+  {% elif is_complete %}
+    Account linked, but not currently connected. Try restarting the service.
+  {% endif %}
+</div>
+
+<div class="form-card">
+  <p style="margin-bottom:1rem;">
+    Sign in to Amazon in your own browser — your <strong>passkey or password
+    never touches this device</strong>. Only a revocable device token is stored
+    here. You can revoke it anytime from Amazon under
+    <em>Manage Your Content and Devices &rarr; Devices</em>.
+  </p>
+
+  <ol class="write-steps">
+    <li>Click <strong>Start Amazon Sign-In</strong> below.</li>
+    <li>A button will appear — open it to sign in to Amazon (passkey works).</li>
+    <li>After signing in, your browser lands on a blank/near-blank Amazon page.
+        <strong>Copy the full address bar URL</strong> (it contains
+        <code>maplanding</code>) and paste it below.</li>
+    <li>Click <strong>Finish Connecting</strong>.</li>
+  </ol>
+
+  <div id="setup-result" class="alert" style="display:none; margin-bottom:1rem;"></div>
+
+  <!-- Step 1 -->
+  <div class="form-actions">
+    <button id="btn-start" class="btn" onclick="startSetup()">Start Amazon Sign-In</button>
+  </div>
+
+  <!-- Step 2: link to open -->
+  <div id="signin-block" style="display:none; margin-top:1.25rem;">
+    <a id="signin-link" class="btn" href="#" target="_blank" rel="noopener">
+      Open Amazon Sign-In ↗
+    </a>
+    <p class="form-hint" style="margin-top:0.5rem;">
+      Opens in a new tab. Sign in with your passkey, then come back here.
+    </p>
+  </div>
+
+  <!-- Step 3: paste redirect URL -->
+  <div id="paste-block" style="display:none; margin-top:1.5rem;">
+    <div class="form-group">
+      <label for="redirect-url">Paste the address-bar URL after signing in</label>
+      <input type="text" id="redirect-url" class="form-input"
+             placeholder="https://www.amazon.com/ap/maplanding?openid.oa2.authorization_code=...">
+      <p class="form-hint">
+        It must contain <code>openid.oa2.authorization_code</code>.
+      </p>
+    </div>
+    <div class="form-actions">
+      <button id="btn-finish" class="btn" onclick="finishSetup()">Finish Connecting</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showResult(ok, msg) {
+  const el = document.getElementById('setup-result');
+  el.style.display = 'block';
+  el.className = 'alert ' + (ok ? 'alert-ok' : 'alert-error');
+  el.textContent = msg;
+}
+
+async function startSetup() {
+  const btn = document.getElementById('btn-start');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  try {
+    const resp = await fetch('/api/setup/start', {method: 'POST'});
+    const data = await resp.json();
+    if (!data.ok) { showResult(false, 'Error: ' + data.error); btn.disabled = false; btn.textContent = 'Start Amazon Sign-In'; return; }
+    document.getElementById('signin-link').href = data.login_url;
+    document.getElementById('signin-block').style.display = 'block';
+    document.getElementById('paste-block').style.display = 'block';
+    btn.textContent = 'Restart Sign-In';
+    btn.disabled = false;
+  } catch (e) {
+    showResult(false, 'Request failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Start Amazon Sign-In';
+  }
+}
+
+async function finishSetup() {
+  const url = document.getElementById('redirect-url').value.trim();
+  if (!url) { showResult(false, 'Paste the redirect URL first.'); return; }
+  const btn = document.getElementById('btn-finish');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  try {
+    const resp = await fetch('/api/setup/complete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({redirect_url: url})
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showResult(true, data.connected
+        ? 'Connected to Alexa! You can close this page.'
+        : 'Account linked. Connecting to Alexa…');
+      setTimeout(() => window.location.reload(), 2000);
+    } else {
+      showResult(false, 'Error: ' + data.error);
+      btn.disabled = false;
+      btn.textContent = 'Finish Connecting';
+    }
+  } catch (e) {
+    showResult(false, 'Request failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Finish Connecting';
+  }
+}
+</script>
+{% endblock %}
