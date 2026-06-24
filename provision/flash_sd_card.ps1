@@ -87,19 +87,35 @@ if (-not $isAdmin) {
 function Resolve-Imager {
     $p = (Get-Command rpi-imager -ErrorAction SilentlyContinue).Source
     if ($p) { return $p }
+    # Known install locations (the vendor folder is "Raspberry Pi Ltd\Imager"
+    # in current versions; older builds used "Raspberry Pi Imager").
     foreach ($c in @(
+        "$env:ProgramFiles\Raspberry Pi Ltd\Imager\rpi-imager.exe",
+        "${env:ProgramFiles(x86)}\Raspberry Pi Ltd\Imager\rpi-imager.exe",
+        "$env:LocalAppData\Programs\Raspberry Pi Ltd\Imager\rpi-imager.exe",
         "$env:ProgramFiles\Raspberry Pi Imager\rpi-imager.exe",
-        "${env:ProgramFiles(x86)}\Raspberry Pi Imager\rpi-imager.exe"
+        "${env:ProgramFiles(x86)}\Raspberry Pi Imager\rpi-imager.exe",
+        "$env:LocalAppData\Programs\Raspberry Pi Imager\rpi-imager.exe"
     )) { if (Test-Path $c) { return $c } }
+    # Last resort: recursive search of common roots.
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:LocalAppData\Programs")) {
+        if ($root -and (Test-Path $root)) {
+            $hit = Get-ChildItem -Path $root -Filter rpi-imager.exe -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+            if ($hit) { return $hit }
+        }
+    }
     return $null
 }
 
 function Install-Imager {
     # Try winget first (Windows 10/11), then fall back to the silent installer.
+    # NOTE: pipe installer output to Out-Host so it does NOT leak into this
+    # function's return value (otherwise $imager would capture winget's text).
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Info "Installing Raspberry Pi Imager via winget..."
         & winget install -e --id RaspberryPiFoundation.RaspberryPiImager `
-            --accept-source-agreements --accept-package-agreements --silent
+            --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Host
         $p = Resolve-Imager
         if ($p) { return $p }
         Write-Host "[warn] winget did not yield rpi-imager; trying direct installer." -ForegroundColor Yellow
@@ -152,7 +168,7 @@ if (-not $openssl -and -not $DryRun) {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Info "openssl not found - installing Git for Windows (provides openssl)..."
         & winget install -e --id Git.Git `
-            --accept-source-agreements --accept-package-agreements --silent
+            --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Host
         $openssl = Resolve-Openssl
     }
 }
