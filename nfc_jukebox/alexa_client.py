@@ -76,7 +76,7 @@ class AlexaTextCommandClient:
                 self._password or "",
                 login_data=login_data,
             )
-            await self._api.login_mode_stored_data()
+            await self._api.login.login_mode_stored_data()
 
             await self._find_device()
             self._connected = True
@@ -91,35 +91,31 @@ class AlexaTextCommandClient:
         if self._api is None:
             return
         try:
-            devices = await self._api.get_devices_data()
-            device_map: dict = {}
-            if isinstance(devices, dict):
-                device_map = devices
-            elif isinstance(devices, list):
-                device_map = {d.get("accountName", str(i)): d for i, d in enumerate(devices)}
+            # get_devices_data() returns dict[serial -> AmazonDevice]; the
+            # user-facing name is device.account_name.
+            devices = list((await self._api.get_devices_data()).values())
+            target = self._device_name.lower()
 
-            for key, device in device_map.items():
-                name = key if isinstance(key, str) else str(key)
-                if name.lower() == self._device_name.lower():
+            for device in devices:
+                if device.account_name.lower() == target:
                     self._target_device = device
                     return
 
             # Fallback: partial match
-            for key, device in device_map.items():
-                name = key if isinstance(key, str) else str(key)
-                if self._device_name.lower() in name.lower():
+            for device in devices:
+                if target in device.account_name.lower():
                     self._target_device = device
                     logger.warning(
                         "Exact device '%s' not found; using '%s'",
                         self._device_name,
-                        name,
+                        device.account_name,
                     )
                     return
 
             logger.warning(
                 "Device '%s' not found. Available: %s",
                 self._device_name,
-                list(device_map.keys()),
+                [d.account_name for d in devices],
             )
         except Exception as exc:
             logger.error("Error fetching device list: %s", exc)
@@ -151,11 +147,8 @@ class AlexaTextCommandClient:
         if self._api is None:
             return []
         try:
-            devices = await self._api.get_devices_data()
-            if isinstance(devices, dict):
-                return list(devices.keys())
-            if isinstance(devices, list):
-                return [d.get("accountName", str(i)) for i, d in enumerate(devices)]
+            devices = (await self._api.get_devices_data()).values()
+            return sorted(d.account_name for d in devices)
         except Exception as exc:
             logger.error("Failed to list devices: %s", exc)
         return []
