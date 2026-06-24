@@ -33,9 +33,13 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
+
+# Pending logins older than this are treated as expired.
+_PENDING_TTL_SECONDS = 30 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +82,11 @@ class AmazonSetupService:
         self._login_data_file = login_data_file
         self._domain = domain
         self._pending: Optional[PendingLogin] = None
+        # Persist the in-progress login so a service restart between "start"
+        # and "finish" doesn't lose it.
+        self._pending_file = str(
+            Path(login_data_file).parent / ".alexa-setup-pending.json"
+        )
 
     # ------------------------------------------------------------------ #
     # Public state helpers
@@ -96,7 +105,50 @@ class AmazonSetupService:
 
     @property
     def pending(self) -> Optional[PendingLogin]:
+        if self._pending is None:
+            self._pending = self._load_pending()
         return self._pending
+
+    # ------------------------------------------------------------------ #
+    # Pending-login persistence (survives a service restart mid-flow)
+    # ------------------------------------------------------------------ #
+
+    def _save_pending(self) -> None:
+        if self._pending is None:
+            return
+        data = asdict(self._pending)
+        data["_ts"] = time.time()
+        path = Path(self._pending_file)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data))
+            path.chmod(0o600)
+        except (OSError, NotImplementedError) as exc:
+            logger.warning("Could not persist pending login: %s", exc)
+
+    def _load_pending(self) -> Optional[PendingLogin]:
+        path = Path(self._pending_file)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            return None
+        if time.time() - data.get("_ts", 0) > _PENDING_TTL_SECONDS:
+            self._clear_pending()
+            return None
+        data.pop("_ts", None)
+        try:
+            return PendingLogin(**data)
+        except TypeError:
+            return None
+
+    def _clear_pending(self) -> None:
+        self._pending = None
+        try:
+            Path(self._pending_file).unlink(missing_ok=True)
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ #
     # Step 1: build the sign-in URL
@@ -114,6 +166,7 @@ class AmazonSetupService:
             domain=self._domain,
             serial=serial,
         )
+        self._save_pending()
         logger.info("Amazon setup: generated sign-in URL (domain=%s)", self._domain)
         return login_url
 
@@ -127,6 +180,8 @@ class AmazonSetupService:
         ``redirect_url`` is the full ``.../ap/maplanding?...`` URL the user
         copied from their browser after signing in. Saves login data on success.
         """
+        if self._pending is None:
+            self._pending = self._load_pending()
         if self._pending is None:
             raise AmazonSetupError(
                 "No login in progress. Start the setup flow again."
@@ -143,7 +198,7 @@ class AmazonSetupService:
         login_data = await self._register_device(code)
 
         self._save_login_data(login_data)
-        self._pending = None
+        self._clear_pending()
         logger.info("Amazon setup: registration complete, tokens saved")
         return login_data
 
