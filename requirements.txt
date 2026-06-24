@@ -11,3 +11,4 @@ python-dotenv
 pydantic
 mfrc522
 RPi.GPIO
+evdev

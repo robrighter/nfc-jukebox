@@ -14,7 +14,7 @@ from . import db
 from . import settings_store
 from .alexa_client import AlexaTextCommandClient
 from .amazon_setup import AmazonSetupService
-from .buttons import ButtonController
+from .buttons import KeyboardController
 from .config import settings
 from .nfc_service import NfcService
 from .scanner import scanner_loop
@@ -67,18 +67,12 @@ async def lifespan(app: FastAPI):
 
     scanner_task = asyncio.create_task(scanner_loop(nfc, alexa))
 
-    # Physical playback buttons (no-op unless pins are configured in .env).
-    buttons = ButtonController(
-        alexa=alexa,
-        loop=asyncio.get_running_loop(),
-        playpause_pin=settings.BUTTON_PLAYPAUSE_PIN,
-        next_pin=settings.BUTTON_NEXT_PIN,
-        previous_pin=settings.BUTTON_PREVIOUS_PIN,
-    )
+    # Physical playback buttons arrive as USB keyboard keystrokes.
+    buttons = KeyboardController(alexa=alexa, key_map_spec=settings.BUTTON_KEY_MAP)
     try:
-        buttons.setup()
+        await buttons.start()
     except Exception as exc:
-        logger.error("Button setup failed: %s", exc)
+        logger.error("Keyboard button setup failed: %s", exc)
 
     app.state.nfc = nfc
     app.state.alexa = alexa
@@ -99,7 +93,7 @@ async def lifespan(app: FastAPI):
     except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 
-    buttons.cleanup()
+    await buttons.stop()
     await alexa.close()
     nfc.cleanup()
     logger.info("NFC Jukebox stopped")

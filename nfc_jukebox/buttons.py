@@ -1,104 +1,125 @@
-"""Physical playback buttons wired to GPIO -> Alexa media commands.
+"""Read playback keystrokes from a USB keyboard/emulator -> Alexa media commands.
 
-Buttons are wired between a GPIO pin and GND; we enable the internal pull-up
-and trigger on the falling edge (press). Each press dispatches a media command
-to the Alexa client. The play/pause button toggles between play and pause.
+The physical play/pause, next, and previous buttons present as a USB HID
+keyboard (a keyboard emulator) sending plain characters. The original firmware
+read 'p' (play/pause), 'n' (next) and 'b' (previous) from stdin; we read the
+same keys from the input device via evdev so it works headless under systemd.
 
-Pins are configured in .env (BCM numbering); 0/blank disables a button.
+Mapping is configured via BUTTON_KEY_MAP, e.g. "p=playpause,n=next,b=previous".
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 try:
-    import RPi.GPIO as GPIO  # type: ignore
+    import evdev
+    from evdev import ecodes
 
-    _GPIO_AVAILABLE = True
+    _EVDEV_AVAILABLE = True
 except ImportError:
-    logger.warning("RPi.GPIO not available — physical buttons disabled (stub mode)")
-    _GPIO_AVAILABLE = False
-    GPIO = None  # type: ignore
+    logger.warning("evdev not available — keyboard playback buttons disabled")
+    _EVDEV_AVAILABLE = False
 
 
-class ButtonController:
-    def __init__(
-        self,
-        alexa,
-        loop: asyncio.AbstractEventLoop,
-        playpause_pin: int = 0,
-        next_pin: int = 0,
-        previous_pin: int = 0,
-    ) -> None:
+def _parse_key_map(spec: str) -> dict:
+    """Parse 'p=playpause,n=next,b=previous' into {evdev_keycode: action}."""
+    out: dict = {}
+    if not _EVDEV_AVAILABLE:
+        return out
+    for pair in (spec or "").split(","):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        char, action = pair.split("=", 1)
+        char = char.strip().lower()
+        action = action.strip().lower()
+        if not char:
+            continue
+        code = ecodes.ecodes.get("KEY_" + char.upper())
+        if code is None:
+            logger.warning("Unknown key '%s' in BUTTON_KEY_MAP", char)
+            continue
+        out[code] = action
+    return out
+
+
+class KeyboardController:
+    """Listens to USB keyboard key presses and dispatches media commands."""
+
+    def __init__(self, alexa, key_map_spec: str) -> None:
         self._alexa = alexa
-        self._loop = loop
-        self._playpause_pin = playpause_pin
-        self._next_pin = next_pin
-        self._previous_pin = previous_pin
-        self._playing = True  # assume something is playing after a scan
-        self._configured_pins: list[int] = []
+        self._code_actions = _parse_key_map(key_map_spec)
+        self._devices: list = []
+        self._tasks: list = []
+        self._playing = True  # assume playing after a scan; toggled by play/pause
 
-    def setup(self) -> None:
-        if not _GPIO_AVAILABLE:
+    async def start(self) -> None:
+        if not _EVDEV_AVAILABLE or not self._code_actions:
+            logger.info(
+                "Keyboard playback buttons disabled (evdev=%s, mapped keys=%d)",
+                _EVDEV_AVAILABLE,
+                len(self._code_actions),
+            )
             return
-        # nfc_service already set BCM mode; setting again is harmless.
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-
-        pin_actions = {
-            self._playpause_pin: "playpause",
-            self._next_pin: "next",
-            self._previous_pin: "previous",
-        }
-        for pin, action in pin_actions.items():
-            if not pin:
-                continue
-            try:
-                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.add_event_detect(
-                    pin,
-                    GPIO.FALLING,
-                    callback=self._make_callback(action),
-                    bouncetime=300,
-                )
-                self._configured_pins.append(pin)
-                logger.info("Button '%s' wired to GPIO %d", action, pin)
-            except Exception as exc:
-                logger.error("Failed to set up button '%s' on GPIO %d: %s", action, pin, exc)
-
-        if not self._configured_pins:
-            logger.info("No physical buttons configured (set BUTTON_*_PIN in .env)")
-
-    def cleanup(self) -> None:
-        if not _GPIO_AVAILABLE:
+        try:
+            paths = evdev.list_devices()
+        except Exception as exc:
+            logger.error("Could not list input devices: %s", exc)
             return
-        for pin in self._configured_pins:
+
+        wanted = set(self._code_actions)
+        for path in paths:
             try:
-                GPIO.remove_event_detect(pin)
+                dev = evdev.InputDevice(path)
             except Exception:
-                pass
+                continue
+            keys = dev.capabilities().get(ecodes.EV_KEY, [])
+            if not wanted.intersection(keys):
+                continue
+            self._devices.append(dev)
+            self._tasks.append(asyncio.create_task(self._read_loop(dev)))
+            logger.info("Listening for playback keys on %s (%s)", dev.path, dev.name)
 
-    def _make_callback(self, action: str):
-        def _cb(_channel) -> None:
-            # Runs in RPi.GPIO's thread; hop back to the event loop.
-            try:
-                asyncio.run_coroutine_threadsafe(self._dispatch(action), self._loop)
-            except Exception as exc:
-                logger.error("Button dispatch failed for '%s': %s", action, exc)
+        if not self._devices:
+            logger.info("No keyboard emitting the configured keys was found")
 
-        return _cb
+    async def _read_loop(self, dev) -> None:
+        try:
+            async for ev in dev.async_read_loop():
+                if ev.type == ecodes.EV_KEY and ev.value == 1:  # key down
+                    action = self._code_actions.get(ev.code)
+                    if action:
+                        await self._dispatch(action)
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.error("Keyboard read loop error on %s: %s", getattr(dev, "path", "?"), exc)
 
     async def _dispatch(self, action: str) -> None:
         if action == "playpause":
-            media_action = "pause" if self._playing else "play"
+            media = "pause" if self._playing else "play"
             self._playing = not self._playing
         else:
-            media_action = action
-        logger.info("Button pressed: %s -> %s", action, media_action)
+            media = action
+        logger.info("Playback key -> %s", media)
         try:
-            await self._alexa.send_media(media_action)
+            await self._alexa.send_media(media)
         except Exception as exc:
-            logger.error("Button '%s' command failed: %s", action, exc)
+            logger.error("Playback command '%s' failed: %s", media, exc)
+
+    async def stop(self) -> None:
+        for t in self._tasks:
+            t.cancel()
+        for t in self._tasks:
+            try:
+                await t
+            except Exception:
+                pass
+        for dev in self._devices:
+            try:
+                dev.close()
+            except Exception:
+                pass
