@@ -101,11 +101,17 @@ systemctl is-active nfc-jukebox.service || true
 "@
 
 Info "Running installer on the Pi (this takes a few minutes)..."
-& ssh -t -o StrictHostKeyChecking=accept-new $target "bash -s" -- < ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($remote)))
-# Fallback for shells where stdin redirection above misbehaves:
-if ($LASTEXITCODE -ne 0) {
-    $remote | & ssh -t -o StrictHostKeyChecking=accept-new $target "bash -s"
-}
+# Write the remote script to a temp file with LF line endings (bash requires
+# LF, not CRLF), copy it over, and run it with a TTY so sudo can prompt.
+$remoteScript = Join-Path $env:TEMP "nfc_remote_setup.sh"
+[System.IO.File]::WriteAllText(
+    $remoteScript,
+    ($remote -replace "`r`n", "`n"),
+    (New-Object System.Text.UTF8Encoding $false)
+)
+& scp -o StrictHostKeyChecking=accept-new $remoteScript "${target}:/tmp/nfc_remote_setup.sh"
+if ($LASTEXITCODE -ne 0) { Die "Failed to copy the setup script to the Pi." }
+& ssh -t -o StrictHostKeyChecking=accept-new $target "bash /tmp/nfc_remote_setup.sh"
 if ($LASTEXITCODE -ne 0) { Die "Remote install failed. SSH in and run 'sudo ./scripts/install_pi.sh' manually to see the error." }
 
 Ok "Installed and service started"
