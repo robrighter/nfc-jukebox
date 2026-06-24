@@ -48,6 +48,19 @@ class AmazonSetupError(RuntimeError):
     """Raised when the setup flow cannot complete."""
 
 
+def _import_api():
+    """Import AmazonEchoApi, raising a friendly error if it's missing."""
+    try:
+        from aioamazondevices.api import AmazonEchoApi  # type: ignore
+
+        return AmazonEchoApi
+    except ImportError as exc:  # pragma: no cover - depends on Pi env
+        raise AmazonSetupError(
+            "aioamazondevices is not installed. Install requirements on a "
+            "Python 3.12+ runtime (Raspberry Pi OS Trixie ships 3.13)."
+        ) from exc
+
+
 @dataclass
 class PendingLogin:
     """In-memory state for an in-progress login. Never persisted."""
@@ -55,6 +68,7 @@ class PendingLogin:
     code_verifier: str
     login_url: str
     domain: str
+    serial: str  # device serial; MUST be reused at registration time
 
 
 class AmazonSetupService:
@@ -93,11 +107,12 @@ class AmazonSetupService:
 
         Returns the URL the user should open in their own browser.
         """
-        code_verifier, login_url = await self._build_login_url(self._domain)
+        code_verifier, login_url, serial = await self._build_login_url(self._domain)
         self._pending = PendingLogin(
             code_verifier=code_verifier,
             login_url=login_url,
             domain=self._domain,
+            serial=serial,
         )
         logger.info("Amazon setup: generated sign-in URL (domain=%s)", self._domain)
         return login_url
@@ -125,11 +140,7 @@ class AmazonSetupService:
                 "'openid.oa2.authorization_code')."
             )
 
-        login_data = await self._register_device(
-            authorization_code=code,
-            code_verifier=self._pending.code_verifier,
-            domain=self._pending.domain,
-        )
+        login_data = await self._register_device(code)
 
         self._save_login_data(login_data)
         self._pending = None
@@ -151,88 +162,64 @@ class AmazonSetupService:
             pass
 
     # ================================================================== #
-    # >>> LIBRARY INTEGRATION POINT 1: build OAuth URL                    #
+    # Library integration (verified against aioamazondevices 14.1.3)      #
     # ================================================================== #
-    async def _build_login_url(self, domain: str) -> tuple[str, str]:
-        """Return (code_verifier, login_url).
+    async def _build_login_url(self, domain: str) -> tuple[str, str, str]:
+        """Return (code_verifier, login_url, serial).
 
-        VERIFY ON PI: confirm these aioamazondevices internals against the
-        pinned version. As of the researched source, login.py exposes:
-          - _create_code_verifier(length=32) -> bytes
-          - _build_client_id() -> str
-          - _build_oauth_url(code_verifier, client_id, registration_language)
-            -> yarl.URL  (an openid.oa2 'code' flow URL returning to
-               /ap/maplanding with an S256 code_challenge)
-        If the names differ, adapt here only — the rest of the app is stable.
+        Drives aioamazondevices' AmazonLogin (``api.login``). Pass
+        ``login_data=None`` so a fresh device serial is generated — a non-empty
+        login_data makes the library look up ``login_data['device_info']`` and
+        raise KeyError. The generated serial is returned so registration can
+        reuse it (the authorization code is bound to that device id).
         """
-        try:
-            import aiohttp
-            from aioamazondevices.api import AmazonEchoApi  # type: ignore
-        except ImportError as exc:  # pragma: no cover - depends on Pi env
-            raise AmazonSetupError(
-                "aioamazondevices is not installed. Install requirements on a "
-                "Python 3.12+ runtime (Raspberry Pi OS Trixie ships 3.13)."
-            ) from exc
+        AmazonEchoApi = _import_api()
+        import aiohttp
 
         async with aiohttp.ClientSession() as session:
-            # Email/password are not used for the browser flow; pass blanks.
-            api = AmazonEchoApi(session, "", "", login_data={"site": f"https://www.amazon.{domain}"})
+            api = AmazonEchoApi(session, "", "", login_data=None)
+            login = api.login
             try:
-                code_verifier = api._create_code_verifier()  # type: ignore[attr-defined]
-                client_id = api._build_client_id()  # type: ignore[attr-defined]
-                url = api._build_oauth_url(code_verifier, client_id)  # type: ignore[attr-defined]
-            except AttributeError as exc:
+                code_verifier = login._create_code_verifier()  # bytes
+                client_id = login._build_client_id()
+                url = login._build_oauth_url(code_verifier, client_id)
+                serial = login._serial
+            except (AttributeError, KeyError) as exc:
                 raise AmazonSetupError(
-                    "The installed aioamazondevices version exposes different "
-                    "internal methods than expected. Verify _create_code_verifier / "
-                    "_build_client_id / _build_oauth_url in login.py and update "
-                    "amazon_setup._build_login_url accordingly."
+                    "aioamazondevices internals differ from the expected "
+                    f"(14.1.3) shape: {exc!r}. Check api.login methods "
+                    "_create_code_verifier / _build_client_id / _build_oauth_url."
                 ) from exc
 
-            verifier_str = (
-                code_verifier.decode() if isinstance(code_verifier, bytes) else str(code_verifier)
-            )
-            return verifier_str, str(url)
+            return code_verifier.decode(), str(url), serial
 
-    # ================================================================== #
-    # >>> LIBRARY INTEGRATION POINT 2: register device from auth code     #
-    # ================================================================== #
-    async def _register_device(
-        self,
-        authorization_code: str,
-        code_verifier: str,
-        domain: str,
-    ) -> dict[str, Any]:
+    async def _register_device(self, authorization_code: str) -> dict[str, Any]:
         """Exchange the authorization code for device tokens (login_data dict).
 
-        VERIFY ON PI: as researched, login.py's _register_device(data) takes a
-        dict with 'authorization_code' and 'code_verifier' and returns/saves a
-        login_data dict containing: adp_token, device_private_key, access_token,
-        refresh_token, expires, website_cookies, store_authentication_cookie,
-        device_info, customer_info, site. Adapt the call below if the pinned
-        version's signature differs.
+        Reuses the serial from the URL-build step (stored on ``_pending``) and
+        passes the PKCE verifier as bytes, matching AmazonLogin._register_device.
         """
-        try:
-            import aiohttp
-            from aioamazondevices.api import AmazonEchoApi  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise AmazonSetupError("aioamazondevices is not installed.") from exc
+        if self._pending is None:
+            raise AmazonSetupError("No login in progress.")
+
+        AmazonEchoApi = _import_api()
+        import aiohttp
 
         async with aiohttp.ClientSession() as session:
-            api = AmazonEchoApi(session, "", "", login_data={"site": f"https://www.amazon.{domain}"})
+            api = AmazonEchoApi(session, "", "", login_data=None)
+            login = api.login
+            # The authorization code was issued for device:{serial}; the
+            # registration must present the SAME serial/client_id.
+            login._serial = self._pending.serial
             try:
-                login_data = await api._register_device(  # type: ignore[attr-defined]
+                login_data = await login._register_device(
                     {
                         "authorization_code": authorization_code,
-                        "code_verifier": code_verifier,
+                        "code_verifier": self._pending.code_verifier.encode(),
                     }
                 )
-            except AttributeError as exc:
-                raise AmazonSetupError(
-                    "The installed aioamazondevices version does not expose "
-                    "_register_device as expected. Verify login.py and update "
-                    "amazon_setup._register_device accordingly."
-                ) from exc
+            except AmazonSetupError:
+                raise
             except Exception as exc:
                 raise AmazonSetupError(f"Device registration failed: {exc}") from exc
 
@@ -241,7 +228,6 @@ class AmazonSetupService:
                     "Registration returned an unexpected result; expected a "
                     "login-data dict."
                 )
-            login_data.setdefault("site", f"https://www.amazon.{domain}")
             return login_data
 
 
