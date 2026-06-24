@@ -38,5 +38,16 @@ class Settings:
     WEB_UI_PASSWORD: str = field(default_factory=lambda: os.getenv("WEB_UI_PASSWORD", ""))
     LED_PIN: int = field(default_factory=lambda: int(os.getenv("LED_PIN", "24")))
 
+    # Physical playback buttons (BCM GPIO pin numbers). 0/blank = not wired.
+    BUTTON_PLAYPAUSE_PIN: int = field(
+        default_factory=lambda: int(os.getenv("BUTTON_PLAYPAUSE_PIN", "0") or "0")
+    )
+    BUTTON_NEXT_PIN: int = field(
+        default_factory=lambda: int(os.getenv("BUTTON_NEXT_PIN", "0") or "0")
+    )
+    BUTTON_PREVIOUS_PIN: int = field(
+        default_factory=lambda: int(os.getenv("BUTTON_PREVIOUS_PIN", "0") or "0")
+    )
+
 
 settings = Settings()
