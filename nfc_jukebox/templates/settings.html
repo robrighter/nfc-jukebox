@@ -29,11 +29,22 @@
   </div>
 
   <div class="form-group">
-    <label>Live Preview</label>
+    <label for="preview-album">Try an album (used for the preview and the test command)</label>
+    <input
+      type="text"
+      id="preview-album"
+      class="form-input"
+      value="Abbey Road by The Beatles"
+      oninput="updatePreview()"
+      onkeydown="if(event.key==='Enter'){event.preventDefault(); testCommand();}"
+    >
+  </div>
+
+  <div class="form-group">
+    <label>Live Preview — exact words sent to Alexa</label>
     <div class="preview-box">
-      Alexa, <span id="template-preview">{{ settings.alexa_command_template }}</span>
+      Alexa, <span id="template-preview"></span>
     </div>
-    <p class="form-hint">Preview uses "Abbey Road by The Beatles" as the example album.</p>
   </div>
 
   <div class="form-actions">
@@ -41,6 +52,11 @@
     <button type="button" class="btn btn-secondary" onclick="testCommand()">Send Test Command</button>
   </div>
 </form>
+
+<div class="form-group" style="max-width:700px; margin-top:1rem;">
+  <label>Console — commands sent to Alexa</label>
+  <pre id="command-console" style="background:#0f172a; color:#e2e8f0; padding:0.75rem 0.9rem; border-radius:8px; font-size:0.8rem; line-height:1.5; max-height:220px; overflow:auto; white-space:pre-wrap; margin:0;">(no commands sent yet)</pre>
+</div>
 
 <h2 style="margin-top:2rem;">Alexa Device</h2>
 <div class="form-card">
@@ -65,30 +81,57 @@
 
 {% block scripts %}
 <script>
+function currentAlbum() {
+  const a = document.getElementById('preview-album').value.trim();
+  return a || 'Abbey Road by The Beatles';
+}
+
 function updatePreview() {
   const template = document.getElementById('alexa_command_template').value;
-  const preview = template.replace('{album}', 'Abbey Road by The Beatles');
+  // Replace every {album} occurrence with the typed album.
+  const preview = template.split('{album}').join(currentAlbum());
   document.getElementById('template-preview').textContent = preview;
+}
+
+function logToConsole(line) {
+  const el = document.getElementById('command-console');
+  const ts = new Date().toLocaleTimeString();
+  const entry = '[' + ts + '] ' + line;
+  if (el.textContent.startsWith('(no commands')) {
+    el.textContent = entry;
+  } else {
+    el.textContent += '\n' + entry;
+  }
+  el.scrollTop = el.scrollHeight;
 }
 
 async function testCommand() {
   const resultEl = document.getElementById('test-result');
+  const album = currentAlbum();
+  const template = document.getElementById('alexa_command_template').value;
   resultEl.style.display = 'none';
   try {
-    const resp = await fetch('/settings/test-command', {method: 'POST'});
+    const resp = await fetch('/settings/test-command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({album: album, template: template})
+    });
     const data = await resp.json();
     resultEl.style.display = 'block';
     if (data.ok) {
       resultEl.className = 'alert alert-ok';
-      resultEl.textContent = 'Test command sent: "' + data.command + '"';
+      resultEl.textContent = 'Sent to Alexa: "' + data.command + '"';
+      logToConsole('SENT  → "' + data.command + '"');
     } else {
       resultEl.className = 'alert alert-error';
-      resultEl.textContent = 'Error: ' + data.error;
+      resultEl.textContent = 'Error: ' + (data.error || 'unknown');
+      logToConsole('ERROR → ' + (data.command ? '"' + data.command + '"  ' : '') + (data.error || 'unknown'));
     }
   } catch (e) {
     resultEl.style.display = 'block';
     resultEl.className = 'alert alert-error';
     resultEl.textContent = 'Request failed: ' + e.message;
+    logToConsole('FAILED → ' + e.message);
   }
 }
 

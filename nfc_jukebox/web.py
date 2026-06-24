@@ -186,13 +186,29 @@ async def settings_save(
 @router.post("/settings/test-command")
 async def settings_test_command(request: Request):
     alexa = request.app.state.alexa
-    template = await settings_store.get_command_template()
-    command = template.format(album="Test Album")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    album = (body.get("album") or "Abbey Road by The Beatles").strip()
+    template = body.get("template")
+    if not template or not str(template).strip():
+        template = await settings_store.get_command_template()
+
+    try:
+        command = template.format(album=album)
+    except (KeyError, ValueError, IndexError) as exc:
+        return JSONResponse(
+            {"ok": False, "error": f"Invalid template: {exc}"}, status_code=400
+        )
+
     try:
         await alexa.send_text_command(command)
         return JSONResponse({"ok": True, "command": command})
     except Exception as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+        return JSONResponse(
+            {"ok": False, "error": str(exc), "command": command}, status_code=500
+        )
 
 
 @router.get("/status", response_class=HTMLResponse)
