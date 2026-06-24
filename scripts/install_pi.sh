@@ -29,7 +29,7 @@ echo ""
 
 echo "==> Installing system packages..."
 apt-get update -qq
-apt-get install -y python3 python3-venv python3-pip git i2c-tools python3-dev build-essential
+apt-get install -y python3 python3-venv python3-pip git i2c-tools python3-dev build-essential rsync
 
 # ---- enable SPI ----
 
@@ -75,11 +75,19 @@ else
   echo "    ${INSTALL_DIR}/.env already exists — not overwriting."
 fi
 
+# ---- ownership ----
+# The service runs as the login user, so that user must own the tree
+# (otherwise it cannot write the SQLite DB or Alexa login data under data/).
+RUN_USER="${SUDO_USER:-pi}"
+echo "==> Setting ownership to ${RUN_USER}..."
+chown -R "${RUN_USER}:${RUN_USER}" "${INSTALL_DIR}"
+
 # ---- systemd service ----
 
 if [[ -f "${INSTALL_DIR}/${SERVICE_FILE}" ]]; then
-  echo "==> Installing systemd service..."
-  cp "${INSTALL_DIR}/${SERVICE_FILE}" "${SYSTEMD_DIR}/nfc-jukebox.service"
+  echo "==> Installing systemd service (User=${RUN_USER})..."
+  sed "s/^User=.*/User=${RUN_USER}/" "${INSTALL_DIR}/${SERVICE_FILE}" \
+      > "${SYSTEMD_DIR}/nfc-jukebox.service"
   systemctl daemon-reload
   systemctl enable nfc-jukebox.service
   systemctl restart nfc-jukebox.service

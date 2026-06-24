@@ -92,8 +92,14 @@ echo '==> Unpacking repo...'
 rm -rf ~/nfc-jukebox && mkdir -p ~/nfc-jukebox
 tar -xzf /tmp/nfc-jukebox.tgz -C ~/nfc-jukebox
 cd ~/nfc-jukebox
+# The repo was packaged on Windows: strip CRLF from shell/text files and run
+# the installer via bash, since the execute bit is not preserved in the tarball.
+find . -type f \( -name '*.sh' -o -name '*.service' -o -name '*.txt' -o -name '*.toml' -o -name '.env.example' \) -exec sed -i 's/\r$//' {} +
+# Quiet the 'unable to resolve host' sudo warning if the hostname isn't in /etc/hosts.
+HN="`$(hostname)"
+grep -q "`$HN" /etc/hosts || echo "127.0.1.1 `$HN" | sudo tee -a /etc/hosts >/dev/null
 echo '==> Running installer (you may be asked for your sudo password)...'
-sudo ./scripts/install_pi.sh
+sudo bash scripts/install_pi.sh
 $envLine
 sudo systemctl restart nfc-jukebox.service || true
 echo '==> Service status:'
