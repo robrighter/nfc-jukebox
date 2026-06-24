@@ -168,6 +168,66 @@ class AlexaTextCommandClient:
             logger.error("Failed to send Alexa command '%s': %s", text_command, exc)
             raise
 
+    # Map our action names to the library's media-control enum members.
+    _MEDIA_ACTIONS = {"play", "pause", "next", "previous", "stop"}
+
+    async def send_media(self, action: str) -> None:
+        """Send a playback control (play/pause/next/previous/stop) to the device."""
+        action = action.lower().strip()
+        if action not in self._MEDIA_ACTIONS:
+            raise ValueError(f"Unknown media action: {action!r}")
+        if not self._connected or self._api is None:
+            raise RuntimeError("Alexa client is not connected")
+        if self._target_device is None:
+            raise RuntimeError(
+                f"Target device '{self._device_name}' not found in account"
+            )
+        from aioamazondevices.structures import AmazonMediaControls  # type: ignore
+
+        control = {
+            "play": AmazonMediaControls.Play,
+            "pause": AmazonMediaControls.Pause,
+            "next": AmazonMediaControls.Next,
+            "previous": AmazonMediaControls.Previous,
+            "stop": AmazonMediaControls.Stop,
+        }[action]
+        try:
+            if action == "stop":
+                await self._api.send_media_command(self._target_device, control)
+            else:
+                # Work around an aioamazondevices 14.1.3 bug: URI_MEDIA_CONTROL
+                # ("api/np/command") lacks a leading slash, so the library builds
+                # https://alexa.amazon.comapi/np/command (bad host). Build the
+                # request ourselves with a correct URL via the http wrapper.
+                await self._send_np_command(control.value)
+            logger.info("Sent media command: %s", action)
+        except Exception as exc:
+            logger.error("Failed to send media command '%s': %s", action, exc)
+            raise
+
+    async def _send_np_command(self, command_type: str) -> None:
+        """POST a now-playing transport command with a correctly-built URL."""
+        from http import HTTPMethod
+
+        from yarl import URL
+
+        device = self._target_device
+        domain = self._api._session_state_data.domain  # type: ignore[attr-defined]
+        url = (
+            URL.build(scheme="https", host=f"alexa.amazon.{domain}")
+            .joinpath("api/np/command")
+            .with_query(
+                deviceSerialNumber=device.serial_number,
+                deviceType=device.device_type,
+            )
+        )
+        await self._api._http_wrapper.session_request(  # type: ignore[attr-defined]
+            method=HTTPMethod.POST,
+            url=url,
+            input_data={"type": command_type},
+            json_data=True,
+        )
+
     async def set_device(self, name: str) -> bool:
         """Change the target Echo device by name. Returns True if found."""
         self._device_name = name

@@ -313,6 +313,20 @@ async def api_set_alexa_device(request: Request):
     return {"ok": True, "selected": name, "found": found}
 
 
+@router.post("/api/alexa/media")
+async def api_alexa_media(request: Request):
+    body = await request.json()
+    action = (body.get("action") or "").strip().lower()
+    alexa = request.app.state.alexa
+    try:
+        await alexa.send_media(action)
+        return JSONResponse({"ok": True, "action": action})
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
 @router.post("/api/alexa/command")
 async def api_alexa_command(request: Request):
     body = await request.json()
