@@ -315,7 +315,7 @@ password_encrypted = true
 
 [ssh]
 enabled = true
-password_authentication = false
+password_authentication = true
 authorized_keys = [ "$pubKey" ]
 
 $wlanBlock
@@ -336,16 +336,33 @@ if ($DryRun) {
 }
 
 # --- Write custom.toml to the boot partition for headless first boot ---
-Info "Locating boot partition..."
-Start-Sleep -Seconds 5
+# Raspberry Pi Imager EJECTS the card after writing, so the boot partition
+# often needs to re-appear (or be re-inserted) before Windows mounts it.
+function Find-BootVolume {
+    Get-Volume -FileSystemLabel "bootfs" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DriveLetter } | Select-Object -First 1
+}
+
+Info "Locating boot partition (Imager may have ejected the card)..."
 $bootVol = $null
-for ($i = 0; $i -lt 12; $i++) {
-    $bootVol = Get-Volume -FileSystemLabel "bootfs" -ErrorAction SilentlyContinue
-    if ($bootVol -and $bootVol.DriveLetter) { break }
+for ($i = 0; $i -lt 30; $i++) {   # up to ~60s for it to re-mount
+    $bootVol = Find-BootVolume
+    if ($bootVol) { break }
     Start-Sleep -Seconds 2
 }
-if (-not $bootVol -or -not $bootVol.DriveLetter) {
-    Die "Could not find the 'bootfs' partition with a drive letter. Re-insert the card, or use the Imager GUI customization (Option A in the README) instead."
+if (-not $bootVol) {
+    Write-Host ""
+    Write-Host "The card was flashed but its boot partition isn't mounted yet" -ForegroundColor Yellow
+    Write-Host "(Raspberry Pi Imager ejects it after writing)." -ForegroundColor Yellow
+    Read-Host "Unplug and re-insert the SD card, then press Enter" | Out-Null
+    for ($i = 0; $i -lt 30; $i++) {
+        $bootVol = Find-BootVolume
+        if ($bootVol) { break }
+        Start-Sleep -Seconds 2
+    }
+}
+if (-not $bootVol) {
+    Die "Still could not find the 'bootfs' partition. Re-insert the card and run: .\provision\write_boot_config.ps1 -WifiSsid `"$wifiSsid`" -LoginPassword <pw>"
 }
 $bootRoot = "$($bootVol.DriveLetter):\"
 
