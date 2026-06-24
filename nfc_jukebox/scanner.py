@@ -15,6 +15,38 @@ from .settings_store import get_command_template
 logger = logging.getLogger(__name__)
 
 
+async def playback_monitor(
+    nfc: NfcService,
+    alexa: AlexaTextCommandClient,
+    store: dict,
+    interval: float = 8.0,
+) -> None:
+    """Poll Alexa playback state; light the LED while a song is playing.
+
+    Mirrors the original behaviour (LED on during playback). Updates ``store``
+    in place so the web UI can show "now playing" without extra API calls.
+    """
+    logger.info("Playback monitor started (interval=%ss)", interval)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            # Don't fight the writer for the LED / reader.
+            if nfc.mode == "writing":
+                continue
+            np = await alexa.get_now_playing()
+            store.clear()
+            store.update(np)
+            if np.get("playing"):
+                nfc.led_on()
+            else:
+                nfc.led_off()
+        except asyncio.CancelledError:
+            logger.info("Playback monitor stopped")
+            return
+        except Exception as exc:
+            logger.debug("Playback monitor error: %s", exc)
+
+
 async def scanner_loop(
     nfc: NfcService,
     alexa: AlexaTextCommandClient,
@@ -80,7 +112,9 @@ async def scanner_loop(
                 logger.error("Alexa command failed: %s", exc)
                 await nfc.blink(3)
             else:
-                nfc.led_off()
+                # Leave the LED on — playback is starting; the playback monitor
+                # keeps it in sync with the real play/pause state from here.
+                pass
 
             # Log to DB
             await db.add_scan_history(tag_text, command, status, error_msg)

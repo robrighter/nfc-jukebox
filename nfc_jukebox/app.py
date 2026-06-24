@@ -17,7 +17,7 @@ from .amazon_setup import AmazonSetupService
 from .buttons import KeyboardController
 from .config import settings
 from .nfc_service import NfcService
-from .scanner import scanner_loop
+from .scanner import scanner_loop, playback_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,11 @@ async def lifespan(app: FastAPI):
 
     scanner_task = asyncio.create_task(scanner_loop(nfc, alexa))
 
+    app.state.now_playing = {"playing": False}
+    monitor_task = asyncio.create_task(
+        playback_monitor(nfc, alexa, app.state.now_playing)
+    )
+
     # Physical playback buttons arrive as USB keyboard keystrokes.
     buttons = KeyboardController(alexa=alexa, key_map_spec=settings.BUTTON_KEY_MAP)
     try:
@@ -79,6 +84,7 @@ async def lifespan(app: FastAPI):
     app.state.setup_service = setup_service
     app.state.buttons = buttons
     app.state.scanner_task = scanner_task
+    app.state.monitor_task = monitor_task
     app.state.write_job: dict = {"active": False}
 
     logger.info("NFC Jukebox started on http://%s:%d", settings.WEB_HOST, settings.WEB_PORT)
@@ -88,10 +94,12 @@ async def lifespan(app: FastAPI):
     # --- Shutdown ---
     logger.info("NFC Jukebox shutting down...")
     scanner_task.cancel()
-    try:
-        await asyncio.wait_for(scanner_task, timeout=3)
-    except (asyncio.CancelledError, asyncio.TimeoutError):
-        pass
+    monitor_task.cancel()
+    for task in (scanner_task, monitor_task):
+        try:
+            await asyncio.wait_for(task, timeout=3)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
 
     await buttons.stop()
     await alexa.close()

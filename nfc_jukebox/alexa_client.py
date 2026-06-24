@@ -86,14 +86,23 @@ class AlexaTextCommandClient:
             logger.error("Failed to connect to Alexa: %s", exc)
             self._connected = False
 
+    async def _fetch_devices(self) -> list:
+        """Return the account's devices using the LIGHT base-devices call.
+
+        get_devices_data() also fetches DND/notifications/communication
+        preferences; that communications call frequently fails for some
+        accounts and retries with growing backoff, hanging startup for
+        minutes. We only need names + serials, so use get_base_devices().
+        """
+        await self._api._device_handler.get_base_devices()  # type: ignore[attr-defined]
+        return list(self._api._device_handler.devices.values())  # type: ignore[attr-defined]
+
     async def _find_device(self) -> None:
         """Locate the configured device in the account device list."""
         if self._api is None:
             return
         try:
-            # get_devices_data() returns dict[serial -> AmazonDevice]; the
-            # user-facing name is device.account_name.
-            devices = list((await self._api.get_devices_data()).values())
+            devices = await self._fetch_devices()
             target = self._device_name.lower()
 
             for device in devices:
@@ -147,7 +156,7 @@ class AlexaTextCommandClient:
         if self._api is None:
             return []
         try:
-            devices = (await self._api.get_devices_data()).values()
+            devices = await self._fetch_devices()
             return sorted(d.account_name for d in devices)
         except Exception as exc:
             logger.error("Failed to list devices: %s", exc)
@@ -167,6 +176,38 @@ class AlexaTextCommandClient:
         except Exception as exc:
             logger.error("Failed to send Alexa command '%s': %s", text_command, exc)
             raise
+
+    async def get_now_playing(self) -> dict:
+        """Return current playback info for the target device.
+
+        {playing: bool, state: str|None, title, artist, album, art}
+        """
+        result = {
+            "playing": False,
+            "state": None,
+            "title": None,
+            "artist": None,
+            "album": None,
+            "art": None,
+        }
+        if not self._connected or self._api is None or self._target_device is None:
+            return result
+        try:
+            await self._api.sync_media_state()
+            states = await self._api._media_handler.media_states
+            st = states.get(self._target_device.serial_number)
+            if st is not None:
+                result.update(
+                    playing=(st.player_state == "PLAYING"),
+                    state=st.player_state,
+                    title=st.now_playing_title,
+                    artist=st.now_playing_line1,
+                    album=st.now_playing_line2,
+                    art=st.now_playing_url,
+                )
+        except Exception as exc:
+            logger.debug("now-playing fetch failed: %s", exc)
+        return result
 
     # Map our action names to the library's media-control enum members.
     _MEDIA_ACTIONS = {"play", "pause", "next", "previous", "stop"}

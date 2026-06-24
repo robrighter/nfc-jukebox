@@ -36,6 +36,20 @@
   </div>
 </div>
 
+<div id="now-playing-card" class="form-card" style="max-width:700px; margin-bottom:1.5rem; {{ '' if now_playing.playing else 'display:none;' }}">
+  <div style="display:flex; gap:1rem; align-items:center;">
+    <img id="np-art" src="{{ now_playing.art or '' }}" alt=""
+         style="width:64px; height:64px; border-radius:6px; object-fit:cover; background:#e2e8f0; {{ '' if now_playing.art else 'display:none;' }}">
+    <div style="min-width:0;">
+      <div class="muted" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">
+        <span id="np-state-dot" style="color:#16a34a;">●</span> Now Playing on {{ alexa_device_name }}
+      </div>
+      <div id="np-title" style="font-weight:700; font-size:1.05rem;">{{ now_playing.title or '' }}</div>
+      <div id="np-artist" class="muted">{{ now_playing.artist or '' }}{% if now_playing.album %} — {{ now_playing.album }}{% endif %}</div>
+    </div>
+  </div>
+</div>
+
 <h2>Send Alexa Command</h2>
 <div class="form-card command-card">
   <div class="command-row">

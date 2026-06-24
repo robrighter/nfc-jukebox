@@ -36,6 +36,7 @@ async def dashboard(request: Request):
             "alexa_device_name": alexa._device_name,
             "command_template": template,
             "recent_scans": scans,
+            "now_playing": getattr(request.app.state, "now_playing", {"playing": False}),
         },
     )
 
@@ -351,6 +352,7 @@ async def api_status(request: Request):
         "alexa_connected": alexa.connected,
         "alexa_device_name": alexa._device_name,
         "command_template": template,
+        "now_playing": getattr(request.app.state, "now_playing", {"playing": False}),
     }
 
 
