@@ -27,6 +27,7 @@ async def dashboard(request: Request):
     scans = await db.get_recent_scans(10)
     template = await settings_store.get_command_template()
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
             "request": request,
@@ -43,6 +44,7 @@ async def dashboard(request: Request):
 async def albums_list(request: Request):
     albums = await db.get_albums()
     return templates.TemplateResponse(
+        request,
         "albums.html", {"request": request, "albums": albums}
     )
 
@@ -50,6 +52,7 @@ async def albums_list(request: Request):
 @router.get("/albums/new", response_class=HTMLResponse)
 async def album_new(request: Request):
     return templates.TemplateResponse(
+        request,
         "album_form.html",
         {"request": request, "album": None, "action": "/albums", "title": "Add Album"},
     )
@@ -64,6 +67,7 @@ async def album_create(
     album_text = album_text.strip()
     if not album_text:
         return templates.TemplateResponse(
+            request,
             "album_form.html",
             {
                 "request": request,
@@ -80,6 +84,7 @@ async def album_create(
         logger.error("Failed to create album: %s", exc)
         error = "That album already exists." if "UNIQUE" in str(exc) else f"Could not save album: {exc}"
         return templates.TemplateResponse(
+            request,
             "album_form.html",
             {
                 "request": request,
@@ -99,6 +104,7 @@ async def album_edit(request: Request, album_id: int):
     if album is None:
         raise HTTPException(status_code=404, detail="Album not found")
     return templates.TemplateResponse(
+        request,
         "album_form.html",
         {
             "request": request,
@@ -134,6 +140,7 @@ async def album_write_page(request: Request, album_id: int):
     if album is None:
         raise HTTPException(status_code=404, detail="Album not found")
     return templates.TemplateResponse(
+        request,
         "write_tag.html", {"request": request, "album": album}
     )
 
@@ -142,6 +149,7 @@ async def album_write_page(request: Request, album_id: int):
 async def settings_page(request: Request):
     stored = await settings_store.get_all()
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
             "request": request,
@@ -164,6 +172,7 @@ async def settings_save(
         message = f"Error: {exc}"
     stored = await settings_store.get_all()
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
             "request": request,
@@ -192,6 +201,7 @@ async def status_page(request: Request):
     alexa = request.app.state.alexa
     template = await settings_store.get_command_template()
     return templates.TemplateResponse(
+        request,
         "status.html",
         {
             "request": request,
@@ -210,6 +220,7 @@ async def setup_page(request: Request):
     setup = request.app.state.setup_service
     alexa = request.app.state.alexa
     return templates.TemplateResponse(
+        request,
         "setup.html",
         {
             "request": request,
