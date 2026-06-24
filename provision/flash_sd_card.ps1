@@ -84,31 +84,86 @@ if (-not $isAdmin) {
     }
 }
 
-# --- Locate Raspberry Pi Imager CLI ---
-$imager = $null
-foreach ($c in @(
-    "$env:ProgramFiles\Raspberry Pi Imager\rpi-imager.exe",
-    "${env:ProgramFiles(x86)}\Raspberry Pi Imager\rpi-imager.exe"
-)) { if (Test-Path $c) { $imager = $c; break } }
-if (-not $imager) {
-    if ($DryRun) {
-        Write-Host "[warn] Raspberry Pi Imager not found. Install from https://www.raspberrypi.com/software/ before a real flash. (Dry run continues.)" -ForegroundColor Yellow
-    } else {
-        Die "Raspberry Pi Imager not found. Install it from https://www.raspberrypi.com/software/ then re-run. (The GUI alone can also do this whole step.)"
-    }
-} else {
-    Ok "Found Imager: $imager"
+function Resolve-Imager {
+    $p = (Get-Command rpi-imager -ErrorAction SilentlyContinue).Source
+    if ($p) { return $p }
+    foreach ($c in @(
+        "$env:ProgramFiles\Raspberry Pi Imager\rpi-imager.exe",
+        "${env:ProgramFiles(x86)}\Raspberry Pi Imager\rpi-imager.exe"
+    )) { if (Test-Path $c) { return $c } }
+    return $null
 }
 
-# --- Locate openssl (Git for Windows ships it) for password hashing ---
-$openssl = (Get-Command openssl -ErrorAction SilentlyContinue).Source
-if (-not $openssl) {
-    foreach ($c in @("$env:ProgramFiles\Git\usr\bin\openssl.exe")) {
-        if (Test-Path $c) { $openssl = $c; break }
+function Install-Imager {
+    # Try winget first (Windows 10/11), then fall back to the silent installer.
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Info "Installing Raspberry Pi Imager via winget..."
+        & winget install -e --id RaspberryPiFoundation.RaspberryPiImager `
+            --accept-source-agreements --accept-package-agreements --silent
+        $p = Resolve-Imager
+        if ($p) { return $p }
+        Write-Host "[warn] winget did not yield rpi-imager; trying direct installer." -ForegroundColor Yellow
+    }
+    Info "Downloading Raspberry Pi Imager installer..."
+    $exe = Join-Path $env:TEMP "rpi-imager-setup.exe"
+    try {
+        Invoke-WebRequest -Uri "https://downloads.raspberrypi.org/imager/imager_latest.exe" `
+            -OutFile $exe -UseBasicParsing
+    } catch {
+        Die "Could not download the Imager installer: $($_.Exception.Message). Install it manually from https://www.raspberrypi.com/software/"
+    }
+    Info "Running the installer silently (this can take a minute)..."
+    # The Imager installer is Inno Setup; these flags install without prompts.
+    $proc = Start-Process -FilePath $exe `
+        -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" `
+        -Wait -PassThru
+    if ($proc.ExitCode -ne 0) {
+        Die "Imager installer exited with code $($proc.ExitCode). Install it manually from https://www.raspberrypi.com/software/"
+    }
+    return (Resolve-Imager)
+}
+
+# --- Locate (or install) Raspberry Pi Imager CLI ---
+$imager = Resolve-Imager
+if (-not $imager) {
+    if ($DryRun) {
+        Write-Host "[warn] Raspberry Pi Imager not found. A real run would auto-install it. (Dry run continues.)" -ForegroundColor Yellow
+    } else {
+        Info "Raspberry Pi Imager not found - installing it..."
+        $imager = Install-Imager
+        if (-not $imager) { Die "Raspberry Pi Imager still not found after install. Install manually from https://www.raspberrypi.com/software/" }
     }
 }
-if (-not $openssl) { Die "openssl not found (needed to hash the login password). Install Git for Windows, or use the Imager GUI." }
-Ok "Found openssl: $openssl"
+if ($imager) { Ok "Imager: $imager" }
+
+function Resolve-Openssl {
+    $p = (Get-Command openssl -ErrorAction SilentlyContinue).Source
+    if ($p) { return $p }
+    foreach ($c in @(
+        "$env:ProgramFiles\Git\usr\bin\openssl.exe",
+        "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe"
+    )) { if (Test-Path $c) { return $c } }
+    return $null
+}
+
+# --- Locate (or install via Git) openssl, for password hashing ---
+$openssl = Resolve-Openssl
+if (-not $openssl -and -not $DryRun) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Info "openssl not found - installing Git for Windows (provides openssl)..."
+        & winget install -e --id Git.Git `
+            --accept-source-agreements --accept-package-agreements --silent
+        $openssl = Resolve-Openssl
+    }
+}
+if (-not $openssl) {
+    if ($DryRun) {
+        Write-Host "[warn] openssl not found. A real run would install Git for Windows to provide it." -ForegroundColor Yellow
+    } else {
+        Die "openssl not found and could not be installed. Install Git for Windows from https://git-scm.com/download/win"
+    }
+}
+if ($openssl) { Ok "openssl: $openssl" }
 
 # --- Ensure an SSH key exists (used for passwordless SSH to the Pi) ---
 $sshDir = Join-Path $env:USERPROFILE ".ssh"
@@ -136,7 +191,12 @@ if ($LoginPassword -ne "") {
     $pwPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
 }
-$pwHash = (& $openssl passwd -6 $pwPlain).Trim()
+if ($openssl) {
+    $pwHash = (& $openssl passwd -6 $pwPlain).Trim()
+} else {
+    # Dry run without openssl available: placeholder only.
+    $pwHash = "<<openssl-not-available-in-dry-run>>"
+}
 
 $wifiSsid = $WifiSsid
 $wifiPass = $WifiPassword
