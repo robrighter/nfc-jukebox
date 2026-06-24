@@ -7,6 +7,20 @@ from .config import settings as env_settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_COMMAND_TEMPLATE = env_settings.ALEXA_COMMAND_TEMPLATE or "play the album {album}"
+DEFAULT_DEVICE_NAME = env_settings.ALEXA_DEVICE_NAME or "Echo"
+
+
+async def get_device_name() -> str:
+    value = await db.get_setting("alexa_device_name")
+    return value if value else DEFAULT_DEVICE_NAME
+
+
+async def set_device_name(name: str) -> None:
+    name = name.strip()
+    if not name:
+        raise ValueError("Device name must not be empty")
+    await db.set_setting("alexa_device_name", name)
+    logger.info("Alexa device set to: %s", name)
 
 
 async def get_command_template() -> str:

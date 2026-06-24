@@ -36,17 +36,29 @@
     <p class="form-hint">Preview uses "Abbey Road by The Beatles" as the example album.</p>
   </div>
 
-  <div class="form-group">
-    <label>Alexa Device</label>
-    <p class="form-value">{{ alexa_device_name }}</p>
-    <p class="form-hint">Set via <code>ALEXA_DEVICE_NAME</code> in your <code>.env</code> file.</p>
-  </div>
-
   <div class="form-actions">
     <button type="submit" class="btn">Save Settings</button>
     <button type="button" class="btn btn-secondary" onclick="testCommand()">Send Test Command</button>
   </div>
 </form>
+
+<h2 style="margin-top:2rem;">Alexa Device</h2>
+<div class="form-card">
+  <div class="form-group">
+    <label for="device-select">Which Echo should play the album?</label>
+    <select id="device-select" class="form-input">
+      <option value="">Loading devices…</option>
+    </select>
+    <p class="form-hint">
+      The currently selected device is <strong id="current-device">{{ alexa_device_name }}</strong>.
+    </p>
+  </div>
+  <div class="form-actions">
+    <button type="button" class="btn" onclick="saveDevice()">Use This Device</button>
+    <button type="button" class="btn btn-secondary" onclick="loadDevices()">Refresh List</button>
+  </div>
+  <div id="device-result" class="alert" style="display:none; margin-top:1rem;"></div>
+</div>
 
 <div id="test-result" class="alert" style="display:none; margin-top: 1rem;"></div>
 {% endblock %}
@@ -80,6 +92,69 @@ async function testCommand() {
   }
 }
 
+function showDeviceResult(ok, msg) {
+  const el = document.getElementById('device-result');
+  el.style.display = 'block';
+  el.className = 'alert ' + (ok ? 'alert-ok' : 'alert-error');
+  el.textContent = msg;
+}
+
+async function loadDevices() {
+  const sel = document.getElementById('device-select');
+  sel.innerHTML = '<option value="">Loading devices…</option>';
+  try {
+    const resp = await fetch('/api/alexa/devices');
+    const data = await resp.json();
+    if (!data.connected) {
+      sel.innerHTML = '<option value="">Amazon not connected</option>';
+      showDeviceResult(false, 'Connect your Amazon account first on the Amazon (setup) page.');
+      return;
+    }
+    if (!data.devices || data.devices.length === 0) {
+      sel.innerHTML = '<option value="">No devices found</option>';
+      return;
+    }
+    sel.innerHTML = '';
+    data.devices.forEach(function (name) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      if (name === data.selected) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    sel.innerHTML = '<option value="">Error loading</option>';
+    showDeviceResult(false, 'Could not load devices: ' + e.message);
+  }
+}
+
+async function saveDevice() {
+  const sel = document.getElementById('device-select');
+  const name = sel.value;
+  if (!name) { showDeviceResult(false, 'Pick a device first.'); return; }
+  try {
+    const resp = await fetch('/api/alexa/device', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name})
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      document.getElementById('current-device').textContent = name;
+      if (data.found) {
+        showDeviceResult(true, 'Now using "' + name + '". Try Send Test Command above.');
+      } else {
+        showDeviceResult(false, 'Saved "' + name + '", but it was not found in your account list. Double-check the device is online.');
+      }
+    } else {
+      showDeviceResult(false, 'Could not save device.');
+    }
+  } catch (e) {
+    showDeviceResult(false, 'Request failed: ' + e.message);
+  }
+}
+
 updatePreview();
+loadDevices();
 </script>
 {% endblock %}

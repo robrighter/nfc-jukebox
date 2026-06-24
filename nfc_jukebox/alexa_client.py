@@ -175,6 +175,18 @@ class AlexaTextCommandClient:
             logger.error("Failed to send Alexa command '%s': %s", text_command, exc)
             raise
 
+    async def set_device(self, name: str) -> bool:
+        """Change the target Echo device by name. Returns True if found."""
+        self._device_name = name
+        self._target_device = None
+        if self._connected:
+            await self._find_device()
+        return self._target_device is not None
+
+    @property
+    def device_name(self) -> str:
+        return self._device_name
+
     @property
     def connected(self) -> bool:
         return self._connected

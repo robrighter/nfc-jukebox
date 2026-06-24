@@ -276,6 +276,27 @@ async def api_setup_status(request: Request):
     }
 
 
+@router.get("/api/alexa/devices")
+async def api_alexa_devices(request: Request):
+    alexa = request.app.state.alexa
+    return {
+        "connected": alexa.connected,
+        "selected": alexa.device_name,
+        "devices": await alexa.list_devices(),
+    }
+
+
+@router.post("/api/alexa/device")
+async def api_set_alexa_device(request: Request):
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name required")
+    await settings_store.set_device_name(name)
+    found = await request.app.state.alexa.set_device(name)
+    return {"ok": True, "selected": name, "found": found}
+
+
 @router.post("/api/alexa/command")
 async def api_alexa_command(request: Request):
     body = await request.json()

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db
+from . import settings_store
 from .alexa_client import AlexaTextCommandClient
 from .amazon_setup import AmazonSetupService
 from .config import settings
@@ -45,10 +46,12 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("NFC setup failed: %s", exc)
 
+    # Prefer the device selected in the UI (stored in settings) over the .env default.
+    device_name = await settings_store.get_device_name()
     alexa = AlexaTextCommandClient(
         email=settings.AMAZON_EMAIL,
         password=settings.AMAZON_PASSWORD,
-        device_name=settings.ALEXA_DEVICE_NAME,
+        device_name=device_name,
         login_data_file=settings.ALEXA_LOGIN_DATA_FILE,
     )
     try:
