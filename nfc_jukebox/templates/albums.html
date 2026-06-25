@@ -12,12 +12,26 @@
 {% if request.query_params.get('refreshed') %}<div class="alert alert-ok">Metadata refreshed.</div>{% endif %}
 
 {% if albums %}
+{% set printable = albums | selectattr('cover_url') | list %}
+{% if printable %}
+<div class="print-bar">
+  <span class="print-bar-label">Coasters: <span id="sel-count">0</span> selected</span>
+  <button type="button" class="btn btn-sm btn-secondary" id="select-all">Select all</button>
+  <button type="button" class="btn btn-sm btn-secondary" id="select-none">Clear</button>
+  <button type="button" class="btn btn-sm" id="print-covers" disabled>🖨 Print covers</button>
+</div>
+{% endif %}
+
 <div class="album-grid">
   {% for album in albums %}
   <div class="album-card">
     <div class="album-cover">
       {% if album.cover_url %}
       <img src="{{ album.cover_url }}" alt="cover" loading="lazy">
+      <label class="album-select" title="Select for coaster printing">
+        <input type="checkbox" class="album-check" value="{{ album.id }}">
+        <span>Print</span>
+      </label>
       {% else %}
       <div class="album-cover-blank">♫</div>
       {% endif %}
@@ -42,6 +56,7 @@
       </div>
 
       <div class="actions-cell">
+        <button type="button" class="btn btn-sm btn-play" data-play="{{ album.id }}">▶ Play</button>
         <a href="/albums/{{ album.id }}/write" class="btn btn-sm">Write Tag</a>
         <a href="/albums/{{ album.id }}/edit" class="btn btn-sm btn-secondary">Edit</a>
         <form method="post" action="/albums/{{ album.id }}/refresh-metadata" class="inline-form">
@@ -59,4 +74,60 @@
 {% else %}
 <p class="muted">No albums yet. <a href="/albums/new">Add your first album</a>.</p>
 {% endif %}
+
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-play]');
+  if (!btn) return;
+  var id = btn.getAttribute('data-play');
+  var label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  fetch('/api/albums/' + id + '/play', { method: 'POST' })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (res.ok && res.d.ok) {
+        btn.textContent = '✓ Playing';
+      } else {
+        btn.textContent = '✗ Failed';
+        if (res.d && res.d.error) console.error('Play failed:', res.d.error);
+      }
+    })
+    .catch(function () { btn.textContent = '✗ Failed'; })
+    .finally(function () {
+      setTimeout(function () { btn.textContent = label; btn.disabled = false; }, 2000);
+    });
+});
+
+// ---- cover selection + print ----
+(function () {
+  var checks = Array.prototype.slice.call(document.querySelectorAll('.album-check'));
+  if (!checks.length) return;
+  var countEl = document.getElementById('sel-count');
+  var printBtn = document.getElementById('print-covers');
+  var allBtn = document.getElementById('select-all');
+  var noneBtn = document.getElementById('select-none');
+
+  function selectedIds() {
+    return checks.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+  }
+  function update() {
+    var ids = selectedIds();
+    if (countEl) countEl.textContent = ids.length;
+    if (printBtn) printBtn.disabled = ids.length === 0;
+  }
+  checks.forEach(function (c) { c.addEventListener('change', update); });
+  if (allBtn) allBtn.addEventListener('click', function () {
+    checks.forEach(function (c) { c.checked = true; }); update();
+  });
+  if (noneBtn) noneBtn.addEventListener('click', function () {
+    checks.forEach(function (c) { c.checked = false; }); update();
+  });
+  if (printBtn) printBtn.addEventListener('click', function () {
+    var ids = selectedIds();
+    if (ids.length) window.open('/albums/print?ids=' + ids.join(','), '_blank');
+  });
+  update();
+}());
+</script>
 {% endblock %}

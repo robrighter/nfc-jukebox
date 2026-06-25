@@ -9,6 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import json
+import re
 
 from . import db
 from .app import templates
@@ -41,6 +42,7 @@ async def dashboard(request: Request):
             "command_template": template,
             "recent_scans": scans,
             "now_playing": getattr(request.app.state, "now_playing", {"playing": False}),
+            "volume": int(getattr(request.app.state, "volume", 50)),
         },
     )
 
@@ -56,6 +58,32 @@ async def albums_list(request: Request):
     return templates.TemplateResponse(
         request,
         "albums.html", {"request": request, "albums": albums}
+    )
+
+
+def _hires_cover(url: Optional[str], size: int = 1500) -> Optional[str]:
+    """Bump an iTunes artwork URL to a larger size for print quality.
+
+    Stored covers use the ``…/600x600bb.jpg`` form; iTunes serves arbitrary
+    sizes, so we request ``size``×``size`` (~430 DPI at 3.5in)."""
+    if not url:
+        return url
+    return re.sub(r"\d+x\d+bb", f"{size}x{size}bb", url)
+
+
+@router.get("/albums/print", response_class=HTMLResponse)
+async def albums_print(request: Request, ids: str = ""):
+    """Print-ready page of selected album covers (3.5in tiles, paginated)."""
+    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    albums = []
+    for album_id in id_list:
+        album = await db.get_album_by_id(album_id)
+        if album and album.get("cover_url"):
+            album = dict(album)
+            album["print_cover"] = _hires_cover(album["cover_url"])
+            albums.append(album)
+    return templates.TemplateResponse(
+        request, "print_covers.html", {"request": request, "albums": albums}
     )
 
 
@@ -355,6 +383,31 @@ async def api_alexa_media(request: Request):
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
+@router.post("/api/alexa/volume")
+async def api_alexa_volume(request: Request):
+    """Adjust device volume. Body: {action: "up"|"down", step?} or {level}."""
+    body = await request.json()
+    current = int(getattr(request.app.state, "volume", 50))
+    step = int(body.get("step") or 10)
+    action = (body.get("action") or "").strip().lower()
+    if action == "up":
+        level = current + step
+    elif action == "down":
+        level = current - step
+    elif body.get("level") is not None:
+        level = int(body["level"])
+    else:
+        raise HTTPException(status_code=422, detail="action (up/down) or level required")
+
+    alexa = request.app.state.alexa
+    try:
+        level = await alexa.set_volume(level)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    request.app.state.volume = level
+    return {"ok": True, "volume": level}
+
+
 @router.post("/api/alexa/command")
 async def api_alexa_command(request: Request):
     body = await request.json()
@@ -380,6 +433,7 @@ async def api_status(request: Request):
         "alexa_device_name": alexa._device_name,
         "command_template": template,
         "now_playing": getattr(request.app.state, "now_playing", {"playing": False}),
+        "volume": int(getattr(request.app.state, "volume", 50)),
     }
 
 
@@ -445,6 +499,38 @@ async def api_write_job_create(request: Request):
         album_text=album["album_text"],
         status="waiting",
     )
+
+
+@router.post("/api/albums/{album_id}/play")
+async def api_album_play(request: Request, album_id: int):
+    """Play an album immediately — same command a tag scan would dispatch."""
+    album = await db.get_album_by_id(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    template = await settings_store.get_command_template()
+    artist = album.get("artist") or album.get("meta_artist") or ""
+    command = build_command(template, album["album_text"], artist)
+
+    alexa = request.app.state.alexa
+    status = "success"
+    error_msg: Optional[str] = None
+    try:
+        await alexa.send_text_command(command)
+    except Exception as exc:
+        status = "error"
+        error_msg = str(exc)
+        logger.error("Manual play failed: %s", exc)
+
+    # Mirror the scanner's bookkeeping so history / "last scanned" stay accurate.
+    await db.add_scan_history(album["album_text"], command, status, error_msg)
+    await db.mark_album_scanned(album["album_text"])
+
+    if status != "success":
+        return JSONResponse(
+            {"ok": False, "error": error_msg, "command": command}, status_code=500
+        )
+    return JSONResponse({"ok": True, "command": command})
 
 
 @router.get("/api/write-jobs/current")

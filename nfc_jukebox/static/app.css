@@ -195,6 +195,13 @@ tbody tr:hover { background: #e3d8bd; }
   border-color: #7e2018;
 }
 
+.btn-play {
+  color: #03251f;
+  background: linear-gradient(180deg, #34d3b3, var(--teal));
+  border-color: #0c5346;
+}
+.btn-play:hover { filter: brightness(1.1); }
+
 .btn-sm { padding: 0.28rem 0.6rem; font-size: 0.72rem; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -269,13 +276,148 @@ code {
   box-shadow: inset 0 0 12px rgba(0,0,0,0.6);
 }
 
-/* ---------- now-playing ---------- */
-#now-playing-card { background: linear-gradient(180deg,#221913,#160f0a) !important; color: var(--cream); border:1px solid #4a3a20; }
-#np-title { color: var(--amber-2); }
-#np-artist { color: #d9c9a8 !important; }
+/* ---------- now-playing hero ---------- */
+.hero {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  color: var(--cream);
+  border: 1px solid #4a3a20;
+  border-top-color: #6a5a38;
+  background:
+    radial-gradient(120% 140% at 85% -20%, rgba(255,138,30,0.12), transparent 60%),
+    linear-gradient(180deg, #241a13, #150e09);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.hero-art-wrap { flex-shrink: 0; }
+.hero-art {
+  width: 132px; height: 132px; border-radius: 6px; object-fit: cover;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.55);
+  display: block;
+}
+.hero-art[hidden] { display: none; }
+.hero-art-blank {
+  display: flex; align-items: center; justify-content: center;
+  background: #1c140d; color: var(--amber); font-size: 3rem;
+  border: 1px solid #3a2c1a;
+}
+
+.hero-main { min-width: 0; flex: 1; }
+.hero-eyebrow {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--amber-2);
+}
+.np-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #2ee07f; box-shadow: 0 0 8px #2ee07f;
+}
+.hero--idle .np-dot { background: #6c5a3f; box-shadow: none; }
+.hero--idle .hero-eyebrow { color: var(--ink-soft); }
+
+.hero-title {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 1.45rem; font-weight: 700; line-height: 1.2;
+  color: var(--amber-2); margin: 0.2rem 0 0.1rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hero--idle .hero-title { color: #b9a988; }
+.hero-sub {
+  color: #d9c9a8; font-size: 0.95rem; min-height: 1.2em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* transport push-buttons */
+.transport { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
+.tbtn {
+  width: 46px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; color: #f1e2c4; cursor: pointer;
+  border-radius: 6px; border: 1px solid #241a10;
+  background: linear-gradient(180deg, #6a4226, #3c220f);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 3px rgba(0,0,0,0.4);
+  transition: filter 0.12s, transform 0.05s;
+}
+.tbtn:hover { filter: brightness(1.15); border-color: var(--amber); }
+.tbtn:active, .tbtn.pressed { transform: translateY(1px); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
+.tbtn:disabled { opacity: 0.6; cursor: default; }
+.tbtn-primary {
+  color: #2a1500;
+  background: linear-gradient(180deg, var(--amber-2), var(--amber));
+  border-color: #7a3d05;
+}
+
+/* volume control (LED meter) */
+.volume { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.9rem; max-width: 360px; }
+.vbtn {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; font-weight: 700; line-height: 1; color: #2a1500; cursor: pointer;
+  border-radius: 50%; border: 1px solid #7a3d05;
+  background: linear-gradient(180deg, var(--amber-2), var(--amber));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 2px 3px rgba(0,0,0,0.4);
+}
+.vbtn:hover { filter: brightness(1.08); }
+.vbtn:active, .vbtn.pressed { transform: translateY(1px); }
+.vbtn:disabled { opacity: 0.6; cursor: default; }
+.vol-readout { display: flex; align-items: center; gap: 0.5rem; flex: 1; }
+.vol-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); }
+.vol-bar {
+  flex: 1; height: 10px; border-radius: 5px; overflow: hidden;
+  background: #160f08; border: 1px solid #3a2c1a;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.7);
+}
+.vol-fill {
+  height: 100%; width: 50%;
+  background: linear-gradient(90deg, var(--amber), var(--amber-2));
+  box-shadow: 0 0 8px var(--amber-glow);
+  transition: width 0.15s ease;
+}
+.vol-num {
+  font-family: "Share Tech Mono", monospace; font-size: 0.85rem;
+  color: var(--amber-2); min-width: 2ch; text-align: right;
+}
+
+@media (max-width: 600px) {
+  .hero { flex-direction: column; align-items: stretch; text-align: left; }
+  .hero-art-wrap { align-self: center; }
+}
+
+/* ---------- recent-scan thumbnails ---------- */
+.scan-art-col { width: 48px; }
+.scan-art {
+  width: 40px; height: 40px; border-radius: 4px; object-fit: cover; display: block;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.scan-art-blank {
+  display: flex; align-items: center; justify-content: center;
+  background: #2a2014; color: var(--amber); font-size: 1.2rem;
+}
+
+/* ---------- print/coaster bar ---------- */
+.print-bar {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin-bottom: 1.1rem; padding: 0.6rem 0.85rem;
+  background: linear-gradient(180deg, #241a13, #150e09);
+  border: 1px solid #4a3a20; border-radius: var(--radius);
+}
+.print-bar-label { color: var(--cream); font-size: 0.85rem; margin-right: auto; }
+.print-bar-label #sel-count { color: var(--amber-2); font-weight: 700; }
 
 /* ---------- album grid ---------- */
 .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.1rem; }
+.album-cover { flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.album-select {
+  margin-top: auto;            /* sit at the bottom-left of the card */
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-soft); cursor: pointer; user-select: none;
+}
+.album-select input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--amber); }
 .album-card {
   display: flex; gap: 0.9rem;
   background: linear-gradient(180deg, var(--panel), var(--panel-2));
@@ -295,13 +437,39 @@ code {
 .album-title { font-weight: 700; color: var(--ink); line-height: 1.25; }
 .album-artist { color: #6b4e2a; font-size: 0.9rem; font-weight: 600; }
 .album-text { font-size: 0.78rem !important; word-break: break-word; }
-.album-tracks { margin: 0.4rem 0; }
+.album-tracks { margin: 0.5rem 0; }
 .album-tracks summary {
-  cursor: pointer; font-size: 0.78rem; color: #7a3d05; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.04em;
+  cursor: pointer; font-size: 0.74rem; color: #7a3d05; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; list-style: none;
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0;
 }
-.album-tracks ol { margin: 0.4rem 0 0 1.2rem; font-size: 0.82rem; color: var(--ink); max-height: 180px; overflow:auto; }
-.album-tracks li { margin-bottom: 0.15rem; }
+.album-tracks summary::-webkit-details-marker { display: none; }
+.album-tracks summary::before {
+  content: "\25B8"; color: #a06a2a; font-size: 0.9em; transition: transform 0.15s ease;
+}
+.album-tracks[open] summary::before { transform: rotate(90deg); }
+.album-tracks ol {
+  list-style: none; counter-reset: trk;
+  margin: 0.5rem 0 0; padding: 0.2rem 0;
+  max-height: 210px; overflow-y: auto;
+  font-size: 0.82rem;
+  background: #ece2c8; border: 1px solid #c7b994; border-radius: 5px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+  scrollbar-width: thin; scrollbar-color: #b6a47a transparent;
+}
+.album-tracks ol::-webkit-scrollbar { width: 8px; }
+.album-tracks ol::-webkit-scrollbar-thumb { background: #b6a47a; border-radius: 4px; }
+.album-tracks li {
+  counter-increment: trk;
+  display: flex; gap: 0.6rem; align-items: baseline;
+  padding: 0.28rem 0.75rem; color: var(--ink); line-height: 1.3;
+}
+.album-tracks li::before {
+  content: counter(trk);
+  flex: 0 0 1.5em; text-align: right;
+  color: #9a7b45; font-family: "Share Tech Mono", monospace; font-size: 0.92em;
+}
+.album-tracks li + li { border-top: 1px solid #d8caa6; }
 .album-meta { font-size: 0.75rem !important; margin: 0.4rem 0; }
 
 @media (max-width: 600px) {

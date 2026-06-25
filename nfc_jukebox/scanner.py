@@ -71,10 +71,17 @@ async def scanner_loop(
     Continuously poll the NFC reader and dispatch Alexa commands.
     Runs until cancelled.
     """
-    last_scanned: dict[str, float] = {}  # album_text -> timestamp
-    cooldown = settings.NFC_RESCAN_COOLDOWN_SECONDS
+    # Edge-triggered scanning: dispatch once when a tag appears on the reader,
+    # ignore it while it stays, and re-arm only after it has been absent for
+    # ``release_seconds``. That absence window doubles as a debounce for the
+    # MFRC522's intermittent misreads (a present tag occasionally reads as
+    # empty), so a brief misread is not mistaken for the tag being removed and
+    # does not cause the album to restart.
+    present_tag: Optional[str] = None  # tag currently on the reader (handled)
+    last_seen = 0.0
+    release_seconds = max(0.5, float(settings.NFC_RESCAN_COOLDOWN_SECONDS))
 
-    logger.info("NFC scanner started (cooldown=%ds)", cooldown)
+    logger.info("NFC scanner started (re-arm after %.1fs absence)", release_seconds)
 
     while True:
         try:
@@ -86,24 +93,28 @@ async def scanner_loop(
 
             nfc.mode = "scanning"
             tag_text: Optional[str] = await nfc.read_tag_no_block()
+            now = time.monotonic()
 
             if not tag_text:
+                # No tag this poll. Treat the current tag as removed only once
+                # it has been continuously absent for the release window, so a
+                # single flaky misread does not re-arm (and later re-fire) it.
+                if present_tag is not None and (now - last_seen) >= release_seconds:
+                    logger.debug("Tag '%s' removed from reader", present_tag)
+                    present_tag = None
                 if nfc.mode == "scanning":
                     nfc.mode = "idle"
                 continue
 
-            # Cooldown deduplication
-            now = time.monotonic()
-            if tag_text in last_scanned:
-                elapsed = now - last_scanned[tag_text]
-                if elapsed < cooldown:
-                    logger.debug(
-                        "Ignoring duplicate scan of '%s' (%.1fs ago)", tag_text, elapsed
-                    )
-                    nfc.mode = "idle"
-                    continue
+            # A tag is on the reader.
+            last_seen = now
+            if tag_text == present_tag:
+                # Same tag still sitting there — already played; do nothing.
+                nfc.mode = "idle"
+                continue
 
-            last_scanned[tag_text] = now
+            # Rising edge: a new (or freshly re-placed) tag appeared.
+            present_tag = tag_text
 
             # Build command from current template. Resolve the artist from the
             # album record (user-set, else iTunes metadata) for {artist}.

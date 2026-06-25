@@ -32,6 +32,25 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
 
+def _asset_version() -> str:
+    """Version stamp for static assets, from the newest file mtime.
+
+    Appended as ?v=… to CSS/JS URLs so browsers fetch fresh copies after a
+    deploy instead of serving heuristically-cached stale files. Recomputed at
+    process start (every deploy restarts the service)."""
+    try:
+        mtimes = [
+            os.path.getmtime(os.path.join(_STATIC_DIR, name))
+            for name in os.listdir(_STATIC_DIR)
+        ]
+        return str(int(max(mtimes))) if mtimes else "0"
+    except OSError:
+        return "0"
+
+
+templates.env.globals["asset_v"] = _asset_version()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
@@ -86,6 +105,9 @@ async def lifespan(app: FastAPI):
     app.state.scanner_task = scanner_task
     app.state.monitor_task = monitor_task
     app.state.write_job: dict = {"active": False}
+    # Last volume we set via the UI. The Alexa media API has no volume read-back,
+    # so the app is the source of truth for the +/- controls (0–100).
+    app.state.volume = 50
 
     logger.info("NFC Jukebox started on http://%s:%d", settings.WEB_HOST, settings.WEB_PORT)
 

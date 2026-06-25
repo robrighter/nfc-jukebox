@@ -272,7 +272,11 @@ def _get_recent_scans_sync(limit: int = 10) -> list[dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM scan_history ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT s.*, a.cover_url AS cover_url "
+            "FROM scan_history s "
+            "LEFT JOIN albums a ON a.album_text = s.album_text "
+            "ORDER BY s.created_at DESC LIMIT ?",
+            (limit,),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:

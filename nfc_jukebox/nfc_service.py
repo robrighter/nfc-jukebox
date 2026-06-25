@@ -131,34 +131,61 @@ class NfcService:
             loop = asyncio.get_running_loop()
             deadline = loop.time() + timeout_seconds
 
-            def _do_write() -> None:
-                self._reader.write(text)
+            def _do_write_burst() -> tuple[bool, int]:
+                # Tight-poll write_no_block for a short burst *inside* the worker
+                # thread. This mirrors the library's blocking write() (a hot loop
+                # over write_no_block), which detects a held card far more
+                # reliably than polling a single attempt every 0.2s with thread
+                # overhead in between. write_no_block returns a truthy tag id as
+                # soon as a card responds; (None, None) when no card is present.
+                # Do NOT call self._reader.write() — it blocks forever, defeating
+                # the timeout/cancel checks below.
+                burst_end = time.monotonic() + 0.5
+                attempts = 0
+                while time.monotonic() < burst_end:
+                    attempts += 1
+                    tag_id, _ = self._reader.write_no_block(text)
+                    if tag_id is not None:
+                        return True, attempts
+                return False, attempts
 
+            total_attempts = 0
             while True:
                 if self._write_cancelled:
+                    self.led_off()
                     self._mode = "idle"
                     raise asyncio.CancelledError("Write cancelled by user")
-                if asyncio.get_running_loop().time() > deadline:
+                if loop.time() > deadline:
+                    self.led_off()
                     self._mode = "error"
+                    logger.warning(
+                        "NFC write timed out after %ss (%d poll attempts, no tag "
+                        "detected — check the tag is seated on the reader)",
+                        timeout_seconds, total_attempts,
+                    )
                     raise TimeoutError(f"NFC write timed out after {timeout_seconds}s")
 
                 try:
                     self.led_on()
-                    await asyncio.to_thread(_do_write)
-                    self.led_off()
-                    self._mode = "idle"
-                    logger.info("NFC tag written successfully: '%s'", text)
-                    return
+                    written, attempts = await asyncio.to_thread(_do_write_burst)
+                    total_attempts += attempts
                 except Exception as exc:
-                    err_msg = str(exc).lower()
-                    # MFRC522 raises when no card present; keep retrying
-                    if any(kw in err_msg for kw in ("timeout", "no tag", "error", "failed")):
-                        self.led_off()
-                        await asyncio.sleep(0.3)
-                    else:
-                        self.led_off()
-                        self._mode = "error"
-                        raise
+                    # A read/write hiccup on one attempt is non-fatal; retry
+                    # until the deadline rather than aborting the whole job.
+                    logger.debug("NFC write attempt error: %s", exc)
+                    written = False
+
+                self.led_off()
+                if written:
+                    self._mode = "idle"
+                    logger.info(
+                        "NFC tag written successfully: '%s' (after %d poll attempts)",
+                        text, total_attempts,
+                    )
+                    return
+
+                # Brief yield so cancel/timeout stay responsive between bursts.
+                await asyncio.sleep(0.05)
 
     def cancel_write(self) -> None:
         """Request cancellation of an in-progress write."""

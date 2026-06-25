@@ -97,6 +97,40 @@ class AlexaTextCommandClient:
         await self._api._device_handler.get_base_devices()  # type: ignore[attr-defined]
         return list(self._api._device_handler.devices.values())  # type: ignore[attr-defined]
 
+    def _prune_cluster_members(self, device: object) -> None:
+        """Drop cluster members the device handler didn't load.
+
+        Whole-Home-Audio groups (and some paired devices) list cluster members
+        that the light ``get_base_devices()`` call filters out (no microphone /
+        accessory / ignored device types). When sending a command the library
+        iterates ``device.device_cluster_members`` and indexes
+        ``self._device_handler.devices[serial]`` for each one, raising
+        ``KeyError`` on any member we never loaded. Keep only the members we
+        actually have so the command still reaches the reachable device(s).
+        """
+        try:
+            known = self._api._device_handler.devices  # type: ignore[attr-defined]
+        except AttributeError:
+            return
+        members = getattr(device, "device_cluster_members", None)
+        if not members:
+            return
+        kept = {s: t for s, t in members.items() if s in known}
+        dropped = [s for s in members if s not in kept]
+        if not dropped:
+            return
+        if not kept:
+            logger.warning(
+                "Device '%s' has no reachable cluster members; commands may fail",
+                getattr(device, "account_name", "?"),
+            )
+        else:
+            logger.warning(
+                "Pruning %d unreachable cluster member(s) from '%s': %s",
+                len(dropped), getattr(device, "account_name", "?"), dropped,
+            )
+        device.device_cluster_members = kept  # type: ignore[attr-defined]
+
     async def _find_device(self) -> None:
         """Locate the configured device in the account device list."""
         if self._api is None:
@@ -108,12 +142,14 @@ class AlexaTextCommandClient:
             for device in devices:
                 if device.account_name.lower() == target:
                     self._target_device = device
+                    self._prune_cluster_members(device)
                     return
 
             # Fallback: partial match
             for device in devices:
                 if target in device.account_name.lower():
                     self._target_device = device
+                    self._prune_cluster_members(device)
                     logger.warning(
                         "Exact device '%s' not found; using '%s'",
                         self._device_name,
@@ -246,8 +282,35 @@ class AlexaTextCommandClient:
             logger.error("Failed to send media command '%s': %s", action, exc)
             raise
 
+    async def set_volume(self, level: int) -> int:
+        """Set the target device's volume (0–100). Returns the clamped level."""
+        if not self._connected or self._api is None:
+            raise RuntimeError("Alexa client is not connected")
+        if self._target_device is None:
+            raise RuntimeError(
+                f"Target device '{self._device_name}' not found in account"
+            )
+        level = max(0, min(100, int(level)))
+        try:
+            # Use the now-playing command endpoint (same path as the working
+            # media controls). The library's sequence-based set_device_volume()
+            # sends {"value": "<n>"} which the multiroom "Living Room" group
+            # accepts but ignores, so the volume never actually changes.
+            await self._send_np_payload(
+                {"type": "VolumeLevelCommand", "volumeLevel": level}
+            )
+            logger.info("Set volume: %d", level)
+        except Exception as exc:
+            logger.error("Failed to set volume to %d: %s", level, exc)
+            raise
+        return level
+
     async def _send_np_command(self, command_type: str) -> None:
-        """POST a now-playing transport command with a correctly-built URL."""
+        """POST a now-playing transport command (play/pause/next/...)."""
+        await self._send_np_payload({"type": command_type})
+
+    async def _send_np_payload(self, payload: dict) -> None:
+        """POST an arbitrary now-playing command payload with a correct URL."""
         from http import HTTPMethod
 
         from yarl import URL
@@ -265,7 +328,7 @@ class AlexaTextCommandClient:
         await self._api._http_wrapper.session_request(  # type: ignore[attr-defined]
             method=HTTPMethod.POST,
             url=url,
-            input_data={"type": command_type},
+            input_data=payload,
             json_data=True,
         )
 
