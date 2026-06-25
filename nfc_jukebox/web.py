@@ -14,6 +14,7 @@ from . import db
 from .app import templates
 from .metadata import fetch_album_metadata
 from .models import WriteJobStatus
+from .scanner import build_command
 from . import settings_store
 
 logger = logging.getLogger(__name__)
@@ -71,44 +72,45 @@ async def album_new(request: Request):
 async def album_create(
     request: Request,
     album_text: str = Form(...),
+    artist: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ):
     album_text = album_text.strip()
-    if not album_text:
+    artist = (artist or "").strip()
+
+    def _form_error(msg: str):
         return templates.TemplateResponse(
             request,
             "album_form.html",
             {
                 "request": request,
-                "album": {"album_text": album_text, "notes": notes},
+                "album": {"album_text": album_text, "artist": artist, "notes": notes},
                 "action": "/albums",
                 "title": "Add Album",
-                "error": "Album text is required.",
+                "error": msg,
             },
             status_code=422,
         )
+
+    if not album_text:
+        return _form_error("Album title is required.")
     try:
-        album = await db.create_album(album_text, notes)
+        album = await db.create_album(album_text, artist or None, notes)
     except Exception as exc:
         logger.error("Failed to create album: %s", exc)
-        error = "That album already exists." if "UNIQUE" in str(exc) else f"Could not save album: {exc}"
-        return templates.TemplateResponse(
-            request,
-            "album_form.html",
-            {
-                "request": request,
-                "album": {"album_text": album_text, "notes": notes},
-                "action": "/albums",
-                "title": "Add Album",
-                "error": error,
-            },
-            status_code=422,
+        return _form_error(
+            "That album already exists." if "UNIQUE" in str(exc)
+            else f"Could not save album: {exc}"
         )
     # Best-effort metadata enrichment (cover art + track list).
     try:
-        meta = await fetch_album_metadata(album_text)
+        term = f"{album_text} {artist}".strip()
+        meta = await fetch_album_metadata(term)
         if meta:
             await db.set_album_metadata(album["id"], meta)
+            # Auto-fill the artist from metadata if the user left it blank.
+            if not artist and meta.get("artist"):
+                await db.update_album(album["id"], album_text, meta["artist"], notes)
     except Exception as exc:
         logger.warning("Metadata enrichment failed: %s", exc)
     return RedirectResponse("/albums?added=1", status_code=303)
@@ -147,9 +149,12 @@ async def album_update(
     request: Request,
     album_id: int,
     album_text: str = Form(...),
+    artist: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ):
-    result = await db.update_album(album_id, album_text.strip(), notes)
+    result = await db.update_album(
+        album_id, album_text.strip(), (artist or "").strip() or None, notes
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="Album not found")
     return RedirectResponse("/albums?updated=1", status_code=303)
@@ -217,17 +222,13 @@ async def settings_test_command(request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    album = (body.get("album") or "Abbey Road by The Beatles").strip()
+    album = (body.get("album") or "Abbey Road").strip()
+    artist = (body.get("artist") or "").strip()
     template = body.get("template")
     if not template or not str(template).strip():
         template = await settings_store.get_command_template()
 
-    try:
-        command = template.format(album=album)
-    except (KeyError, ValueError, IndexError) as exc:
-        return JSONResponse(
-            {"ok": False, "error": f"Invalid template: {exc}"}, status_code=400
-        )
+    command = build_command(template, album, artist)
 
     try:
         await alexa.send_text_command(command)

@@ -29,15 +29,27 @@
   </div>
 
   <div class="form-group">
-    <label for="preview-album">Try an album (used for the preview and the test command)</label>
-    <input
-      type="text"
-      id="preview-album"
-      class="form-input"
-      value="Abbey Road by The Beatles"
-      oninput="updatePreview()"
-      onkeydown="if(event.key==='Enter'){event.preventDefault(); testCommand();}"
-    >
+    <label for="preview-album">Try an album &amp; artist (for the preview and test command)</label>
+    <div class="command-row">
+      <input
+        type="text"
+        id="preview-album"
+        class="form-input"
+        value="Abbey Road"
+        placeholder="album title"
+        oninput="updatePreview()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault(); testCommand();}"
+      >
+      <input
+        type="text"
+        id="preview-artist"
+        class="form-input"
+        value="The Beatles"
+        placeholder="artist"
+        oninput="updatePreview()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault(); testCommand();}"
+      >
+    </div>
   </div>
 
   <div class="form-group">
@@ -96,14 +108,20 @@
 {% block scripts %}
 <script>
 function currentAlbum() {
-  const a = document.getElementById('preview-album').value.trim();
-  return a || 'Abbey Road by The Beatles';
+  return document.getElementById('preview-album').value.trim() || 'Abbey Road';
+}
+function currentArtist() {
+  return document.getElementById('preview-artist').value.trim();
 }
 
 function updatePreview() {
   const template = document.getElementById('alexa_command_template').value;
-  // Replace every {album} occurrence with the typed album.
-  const preview = template.split('{album}').join(currentAlbum());
+  const artist = currentArtist();
+  let preview = template.split('{album}').join(currentAlbum())
+                        .split('{artist}').join(artist);
+  // Drop a dangling "by" when there's no artist, matching the server.
+  if (!artist) preview = preview.replace(/\s+by\s*$/, '');
+  preview = preview.replace(/\s{2,}/g, ' ').trim();
   document.getElementById('template-preview').textContent = preview;
 }
 
@@ -140,13 +158,14 @@ async function media(action) {
 async function testCommand() {
   const resultEl = document.getElementById('test-result');
   const album = currentAlbum();
+  const artist = currentArtist();
   const template = document.getElementById('alexa_command_template').value;
   resultEl.style.display = 'none';
   try {
     const resp = await fetch('/settings/test-command', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({album: album, template: template})
+      body: JSON.stringify({album: album, artist: artist, template: template})
     });
     const data = await resp.json();
     resultEl.style.display = 'block';

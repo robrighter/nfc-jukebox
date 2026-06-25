@@ -6,7 +6,9 @@ from .config import settings as env_settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_COMMAND_TEMPLATE = env_settings.ALEXA_COMMAND_TEMPLATE or "play the album {album}"
+DEFAULT_COMMAND_TEMPLATE = (
+    env_settings.ALEXA_COMMAND_TEMPLATE or "play the album {album} by {artist}"
+)
 DEFAULT_DEVICE_NAME = env_settings.ALEXA_DEVICE_NAME or "Echo"
 
 
@@ -36,9 +38,9 @@ async def set_command_template(template: str) -> None:
         raise ValueError("Template must not be empty")
     if "{album}" not in template:
         raise ValueError("Template must contain {album} placeholder")
-    # Validate no unknown placeholders
+    # Validate placeholders: only {album} and {artist} are supported.
     try:
-        template.format(album="test")
+        template.format(album="test", artist="test")
     except (KeyError, ValueError, IndexError) as exc:
         raise ValueError(f"Template contains invalid placeholders: {exc}") from exc
     await db.set_setting("alexa_command_template", template)

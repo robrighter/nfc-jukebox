@@ -54,7 +54,7 @@ def _init_db_sync() -> None:
         """)
         # Migration: add album-metadata columns if missing.
         existing = {row[1] for row in cur.execute("PRAGMA table_info(albums)")}
-        for col in ("meta_artist", "meta_title", "cover_url", "tracks"):
+        for col in ("artist", "meta_artist", "meta_title", "cover_url", "tracks"):
             if col not in existing:
                 cur.execute(f"ALTER TABLE albums ADD COLUMN {col} TEXT")
 
@@ -109,13 +109,28 @@ async def get_album_by_id(album_id: int) -> Optional[dict]:
     return await asyncio.to_thread(_get_album_by_id_sync, album_id)
 
 
-def _create_album_sync(album_text: str, notes: Optional[str]) -> dict:
+def _get_album_by_text_sync(album_text: str) -> Optional[dict]:
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM albums WHERE album_text=?", (album_text,)
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+async def get_album_by_text(album_text: str) -> Optional[dict]:
+    return await asyncio.to_thread(_get_album_by_text_sync, album_text)
+
+
+def _create_album_sync(album_text: str, artist: Optional[str], notes: Optional[str]) -> dict:
     now = _now()
     conn = _get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO albums (album_text, notes, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (album_text, notes, now, now),
+            "INSERT INTO albums (album_text, artist, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (album_text, artist, notes, now, now),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM albums WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -124,17 +139,21 @@ def _create_album_sync(album_text: str, notes: Optional[str]) -> dict:
         conn.close()
 
 
-async def create_album(album_text: str, notes: Optional[str] = None) -> dict:
-    return await asyncio.to_thread(_create_album_sync, album_text, notes)
+async def create_album(
+    album_text: str, artist: Optional[str] = None, notes: Optional[str] = None
+) -> dict:
+    return await asyncio.to_thread(_create_album_sync, album_text, artist, notes)
 
 
-def _update_album_sync(album_id: int, album_text: str, notes: Optional[str]) -> Optional[dict]:
+def _update_album_sync(
+    album_id: int, album_text: str, artist: Optional[str], notes: Optional[str]
+) -> Optional[dict]:
     now = _now()
     conn = _get_conn()
     try:
         conn.execute(
-            "UPDATE albums SET album_text=?, notes=?, updated_at=? WHERE id=?",
-            (album_text, notes, now, album_id),
+            "UPDATE albums SET album_text=?, artist=?, notes=?, updated_at=? WHERE id=?",
+            (album_text, artist, notes, now, album_id),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM albums WHERE id=?", (album_id,)).fetchone()
@@ -143,8 +162,10 @@ def _update_album_sync(album_id: int, album_text: str, notes: Optional[str]) -> 
         conn.close()
 
 
-async def update_album(album_id: int, album_text: str, notes: Optional[str] = None) -> Optional[dict]:
-    return await asyncio.to_thread(_update_album_sync, album_id, album_text, notes)
+async def update_album(
+    album_id: int, album_text: str, artist: Optional[str] = None, notes: Optional[str] = None
+) -> Optional[dict]:
+    return await asyncio.to_thread(_update_album_sync, album_id, album_text, artist, notes)
 
 
 def _delete_album_sync(album_id: int) -> bool:

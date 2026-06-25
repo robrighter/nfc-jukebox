@@ -23,9 +23,9 @@
       {% endif %}
     </div>
     <div class="album-body">
-      <div class="album-title">{{ album.meta_title or album.album_text }}</div>
-      {% if album.meta_artist %}<div class="album-artist">{{ album.meta_artist }}</div>{% endif %}
-      <div class="album-text muted">tag: {{ album.album_text }}</div>
+      <div class="album-title">{{ album.album_text }}</div>
+      {% if album.artist or album.meta_artist %}<div class="album-artist">{{ album.artist or album.meta_artist }}</div>{% endif %}
+      {% if album.meta_title and album.meta_title != album.album_text %}<div class="album-text muted">{{ album.meta_title }}</div>{% endif %}
 
       {% if album.tracks_list %}
       <details class="album-tracks">

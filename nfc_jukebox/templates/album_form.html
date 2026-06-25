@@ -9,18 +9,34 @@
 
 <form method="post" action="{{ action }}" class="form-card">
   <div class="form-group">
-    <label for="album_text">Album Text <span class="req">*</span></label>
+    <label for="album_text">Album Title <span class="req">*</span></label>
     <input
       type="text"
       id="album_text"
       name="album_text"
       required
       value="{{ album['album_text'] if album else '' }}"
-      placeholder="e.g. Abbey Road by The Beatles"
+      placeholder="e.g. Abbey Road"
       class="form-input"
     >
     <p class="form-hint">
-      This text will be written to the NFC tag and sent to Alexa as part of the command.
+      Written to the NFC tag and used as <code>{album}</code> in the Alexa command.
+    </p>
+  </div>
+
+  <div class="form-group">
+    <label for="artist">Artist</label>
+    <input
+      type="text"
+      id="artist"
+      name="artist"
+      value="{{ album['artist'] if album and album.get('artist') else '' }}"
+      placeholder="e.g. The Beatles"
+      class="form-input"
+    >
+    <p class="form-hint">
+      Used as <code>{artist}</code> in the command. Leave blank to auto-fill from
+      the album lookup.
     </p>
   </div>
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Optional
 
@@ -13,6 +14,21 @@ from .nfc_service import NfcService
 from .settings_store import get_command_template
 
 logger = logging.getLogger(__name__)
+
+
+def build_command(template: str, album: str, artist: str = "") -> str:
+    """Format the Alexa command from a template using {album} and {artist}.
+
+    When no artist is known, a dangling 'by' (from 'by {artist}') is removed so
+    the command reads naturally.
+    """
+    try:
+        command = template.format(album=album, artist=artist or "")
+    except (KeyError, ValueError, IndexError):
+        command = f"play the album {album}"
+    if not artist:
+        command = re.sub(r"\s+by\s*$", "", command)
+    return re.sub(r"\s{2,}", " ", command).strip()
 
 
 async def playback_monitor(
@@ -89,13 +105,14 @@ async def scanner_loop(
 
             last_scanned[tag_text] = now
 
-            # Build command from current template
+            # Build command from current template. Resolve the artist from the
+            # album record (user-set, else iTunes metadata) for {artist}.
             template = await get_command_template()
-            try:
-                command = template.format(album=tag_text)
-            except (KeyError, ValueError) as exc:
-                logger.error("Invalid command template '%s': %s", template, exc)
-                command = f"play the album {tag_text}"
+            album_row = await db.get_album_by_text(tag_text)
+            artist = ""
+            if album_row:
+                artist = album_row.get("artist") or album_row.get("meta_artist") or ""
+            command = build_command(template, tag_text, artist)
 
             logger.info("NFC tag scanned: '%s' -> '%s'", tag_text, command)
 
