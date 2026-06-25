@@ -8,8 +8,11 @@ from typing import Optional
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+import json
+
 from . import db
 from .app import templates
+from .metadata import fetch_album_metadata
 from .models import WriteJobStatus
 from . import settings_store
 
@@ -44,6 +47,11 @@ async def dashboard(request: Request):
 @router.get("/albums", response_class=HTMLResponse)
 async def albums_list(request: Request):
     albums = await db.get_albums()
+    for album in albums:
+        try:
+            album["tracks_list"] = json.loads(album.get("tracks") or "[]")
+        except Exception:
+            album["tracks_list"] = []
     return templates.TemplateResponse(
         request,
         "albums.html", {"request": request, "albums": albums}
@@ -80,7 +88,7 @@ async def album_create(
             status_code=422,
         )
     try:
-        await db.create_album(album_text, notes)
+        album = await db.create_album(album_text, notes)
     except Exception as exc:
         logger.error("Failed to create album: %s", exc)
         error = "That album already exists." if "UNIQUE" in str(exc) else f"Could not save album: {exc}"
@@ -96,7 +104,25 @@ async def album_create(
             },
             status_code=422,
         )
+    # Best-effort metadata enrichment (cover art + track list).
+    try:
+        meta = await fetch_album_metadata(album_text)
+        if meta:
+            await db.set_album_metadata(album["id"], meta)
+    except Exception as exc:
+        logger.warning("Metadata enrichment failed: %s", exc)
     return RedirectResponse("/albums?added=1", status_code=303)
+
+
+@router.post("/albums/{album_id}/refresh-metadata")
+async def album_refresh_metadata(request: Request, album_id: int):
+    album = await db.get_album_by_id(album_id)
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album not found")
+    meta = await fetch_album_metadata(album["album_text"])
+    if meta:
+        await db.set_album_metadata(album_id, meta)
+    return RedirectResponse("/albums?refreshed=1", status_code=303)
 
 
 @router.get("/albums/{album_id}/edit", response_class=HTMLResponse)
