@@ -91,7 +91,7 @@
 <h2>Recent Scans</h2>
 {% if recent_scans %}
 <div class="table-wrap">
-  <table>
+  <table class="scans-table">
     <thead>
       <tr>
         <th class="scan-art-col"></th>
@@ -111,9 +111,9 @@
           <span class="scan-art scan-art-blank">♫</span>
           {% endif %}
         </td>
-        <td>{{ scan.album_text }}</td>
-        <td><code>{{ scan.alexa_command }}</code></td>
-        <td>
+        <td data-label="Album" class="scan-album">{{ scan.album_text }}</td>
+        <td data-label="Command"><code>{{ scan.alexa_command }}</code></td>
+        <td data-label="Status">
           <span class="badge badge-{{ 'ok' if scan.status == 'success' else 'err' }}">
             {{ scan.status }}
           </span>
@@ -121,7 +121,7 @@
           <span class="err-msg" title="{{ scan.error_message }}">&#9432;</span>
           {% endif %}
         </td>
-        <td class="muted">{{ scan.created_at }}</td>
+        <td data-label="Time" class="muted">{{ scan.created_at }}</td>
       </tr>
       {% endfor %}
     </tbody>

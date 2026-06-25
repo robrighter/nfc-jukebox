@@ -2,8 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>{% block title %}NFC Jukebox{% endblock %}</title>
+
+  <meta name="theme-color" content="#1a120c">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jukebox">
+
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/static/manifest.json">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -12,7 +27,10 @@
 <body>
   <header>
     <nav>
-      <a href="/" class="nav-brand">NFC Jukebox</a>
+      <a href="/" class="nav-brand">
+        <img class="nav-logo" src="/static/icons/favicon.svg" alt="" width="28" height="28">
+        <span>NFC Jukebox</span>
+      </a>
       <ul class="nav-links">
         <li><a href="/">Dashboard</a></li>
         <li><a href="/albums">Albums</a></li>
