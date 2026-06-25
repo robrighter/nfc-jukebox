@@ -15,9 +15,39 @@ _LOOKUP_URL = "https://itunes.apple.com/lookup"
 _TIMEOUT = 8
 
 
-async def fetch_album_metadata(album_text: str) -> Optional[dict[str, Any]]:
-    """Return {artist, title, cover_url, tracks:[...]} for album_text, or None."""
+async def _search_albums(session, term: str, limit: int = 25) -> list:
+    async with session.get(
+        _SEARCH_URL,
+        params={"term": term, "entity": "album", "limit": str(limit)},
+    ) as resp:
+        # iTunes returns content-type text/javascript.
+        data = await resp.json(content_type=None)
+    return data.get("results") or []
+
+
+def _pick(results: list, artist: str) -> Optional[dict]:
+    """Choose the best album result, preferring an artist-name match."""
+    if not results:
+        return None
+    if artist:
+        al = artist.lower()
+        for r in results:
+            if al in (r.get("artistName") or "").lower():
+                return r
+    return None
+
+
+async def fetch_album_metadata(
+    album_text: str, artist: str = ""
+) -> Optional[dict[str, Any]]:
+    """Return {artist, title, cover_url, tracks:[...]} for an album, or None.
+
+    When ``artist`` is given it is used to disambiguate: iTunes keyword search
+    treats the term fuzzily, so we fetch several results and pick the one whose
+    artist matches, rather than trusting the top hit.
+    """
     album_text = (album_text or "").strip()
+    artist = (artist or "").strip()
     if not album_text:
         return None
 
@@ -26,18 +56,21 @@ async def fetch_album_metadata(album_text: str) -> Optional[dict[str, Any]]:
     timeout = aiohttp.ClientTimeout(total=_TIMEOUT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            # 1) Find the album.
-            async with session.get(
-                _SEARCH_URL,
-                params={"term": album_text, "entity": "album", "limit": "1"},
-            ) as resp:
-                # iTunes returns content-type text/javascript.
-                data = await resp.json(content_type=None)
-            results = data.get("results") or []
-            if not results:
-                logger.info("No iTunes match for album '%s'", album_text)
+            # 1) Find the album, disambiguating by artist when provided.
+            album = None
+            if artist:
+                # Try "artist album", then "album", filtering by artist name.
+                for term in (f"{artist} {album_text}", album_text):
+                    album = _pick(await _search_albums(session, term), artist)
+                    if album:
+                        break
+            if album is None:
+                results = await _search_albums(session, album_text, limit=1)
+                album = results[0] if results else None
+
+            if album is None:
+                logger.info("No iTunes match for album '%s' / artist '%s'", album_text, artist)
                 return None
-            album = results[0]
             collection_id = album.get("collectionId")
             cover = (album.get("artworkUrl100") or "").replace(
                 "100x100bb", "600x600bb"

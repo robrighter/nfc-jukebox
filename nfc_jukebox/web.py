@@ -104,8 +104,7 @@ async def album_create(
         )
     # Best-effort metadata enrichment (cover art + track list).
     try:
-        term = f"{album_text} {artist}".strip()
-        meta = await fetch_album_metadata(term)
+        meta = await fetch_album_metadata(album_text, artist)
         if meta:
             await db.set_album_metadata(album["id"], meta)
             # Auto-fill the artist from metadata if the user left it blank.
@@ -121,7 +120,8 @@ async def album_refresh_metadata(request: Request, album_id: int):
     album = await db.get_album_by_id(album_id)
     if album is None:
         raise HTTPException(status_code=404, detail="Album not found")
-    meta = await fetch_album_metadata(album["album_text"])
+    artist = album.get("artist") or album.get("meta_artist") or ""
+    meta = await fetch_album_metadata(album["album_text"], artist)
     if meta:
         await db.set_album_metadata(album_id, meta)
     return RedirectResponse("/albums?refreshed=1", status_code=303)
