@@ -49,15 +49,33 @@ async def dashboard(request: Request):
 
 @router.get("/albums", response_class=HTMLResponse)
 async def albums_list(request: Request):
-    albums = await db.get_albums()
+    albums = await db.get_albums()  # already sorted by title (COLLATE NOCASE)
     for album in albums:
         try:
             album["tracks_list"] = json.loads(album.get("tracks") or "[]")
         except Exception:
             album["tracks_list"] = []
+
+    # Group by genre (alphabetical), albums within each stay title-sorted.
+    # Albums without a known genre fall into "Other", shown last.
+    groups: dict[str, list] = {}
+    for album in albums:
+        genre = (album.get("meta_genre") or "").strip() or "Other"
+        groups.setdefault(genre, []).append(album)
+    grouped = [
+        (genre, groups[genre])
+        for genre in sorted(groups, key=lambda g: (g == "Other", g.lower()))
+    ]
+
     return templates.TemplateResponse(
         request,
-        "albums.html", {"request": request, "albums": albums}
+        "albums.html",
+        {
+            "request": request,
+            "grouped": grouped,
+            "has_albums": bool(albums),
+            "has_printable": any(a.get("cover_url") for a in albums),
+        },
     )
 
 

@@ -78,6 +78,7 @@ async def fetch_album_metadata(
             meta: dict[str, Any] = {
                 "artist": album.get("artistName"),
                 "title": album.get("collectionName"),
+                "genre": album.get("primaryGenreName"),
                 "cover_url": cover or None,
                 "tracks": [],
             }

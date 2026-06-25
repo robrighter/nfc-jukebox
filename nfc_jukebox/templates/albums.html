@@ -11,9 +11,8 @@
 {% if request.query_params.get('deleted') %}<div class="alert alert-ok">Album deleted.</div>{% endif %}
 {% if request.query_params.get('refreshed') %}<div class="alert alert-ok">Metadata refreshed.</div>{% endif %}
 
-{% if albums %}
-{% set printable = albums | selectattr('cover_url') | list %}
-{% if printable %}
+{% if has_albums %}
+{% if has_printable %}
 <div class="print-bar">
   <span class="print-bar-label">Coasters: <span id="sel-count">0</span> selected</span>
   <button type="button" class="btn btn-sm btn-secondary" id="select-all">Select all</button>
@@ -22,8 +21,10 @@
 </div>
 {% endif %}
 
+{% for genre, items in grouped %}
+<h2 class="genre-heading">{{ genre }} <span class="genre-count">{{ items | length }}</span></h2>
 <div class="album-grid">
-  {% for album in albums %}
+  {% for album in items %}
   <div class="album-card">
     <div class="album-cover">
       {% if album.cover_url %}
@@ -71,6 +72,7 @@
   </div>
   {% endfor %}
 </div>
+{% endfor %}
 {% else %}
 <p class="muted">No albums yet. <a href="/albums/new">Add your first album</a>.</p>
 {% endif %}

@@ -418,6 +418,27 @@ code {
 .print-bar-label { color: var(--cream); font-size: 0.85rem; margin-right: auto; }
 .print-bar-label #sel-count { color: var(--amber-2); font-weight: 700; }
 
+/* ---------- genre sections ---------- */
+.genre-heading {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin: 1.6rem 0 0.9rem;
+  font-family: Helvetica, Arial, sans-serif; font-size: 1rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--amber-2); text-shadow: 0 1px 0 #000;
+}
+.genre-heading::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, var(--panel-edge), transparent);
+}
+.genre-count {
+  flex: none; order: -1;
+  min-width: 1.6em; padding: 0.05em 0.45em;
+  font-size: 0.72rem; font-family: "Share Tech Mono", monospace;
+  text-align: center; color: var(--amber-2);
+  background: #160f08; border: 1px solid #4a3a20; border-radius: 10px;
+}
+.genre-heading:first-of-type { margin-top: 0.5rem; }
+
 /* ---------- album grid ---------- */
 .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.1rem; }
 .album-cover { flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; }

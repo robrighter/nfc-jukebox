@@ -54,7 +54,7 @@ def _init_db_sync() -> None:
         """)
         # Migration: add album-metadata columns if missing.
         existing = {row[1] for row in cur.execute("PRAGMA table_info(albums)")}
-        for col in ("artist", "meta_artist", "meta_title", "cover_url", "tracks"):
+        for col in ("artist", "meta_artist", "meta_title", "meta_genre", "cover_url", "tracks"):
             if col not in existing:
                 cur.execute(f"ALTER TABLE albums ADD COLUMN {col} TEXT")
 
@@ -204,10 +204,11 @@ def _set_album_metadata_sync(album_id: int, meta: dict) -> None:
     conn = _get_conn()
     try:
         conn.execute(
-            "UPDATE albums SET meta_artist=?, meta_title=?, cover_url=?, tracks=?, updated_at=? WHERE id=?",
+            "UPDATE albums SET meta_artist=?, meta_title=?, meta_genre=?, cover_url=?, tracks=?, updated_at=? WHERE id=?",
             (
                 meta.get("artist"),
                 meta.get("title"),
+                meta.get("genre"),
                 meta.get("cover_url"),
                 _json.dumps(meta.get("tracks") or []),
                 _now(),
