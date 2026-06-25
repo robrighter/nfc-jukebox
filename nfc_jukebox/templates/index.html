@@ -28,10 +28,18 @@
     <div id="np-artist" class="hero-sub">{{ now_playing.artist or '' }}{% if now_playing.playing and now_playing.album %} — {{ now_playing.album }}{% endif %}</div>
 
     <div class="transport" id="transport" aria-label="Playback controls">
-      <button class="tbtn" data-media="previous" title="Back" aria-label="Back">⏮</button>
-      <button class="tbtn tbtn-primary" data-media="play" title="Play" aria-label="Play">▶</button>
-      <button class="tbtn" data-media="pause" title="Pause" aria-label="Pause">⏸</button>
-      <button class="tbtn" data-media="next" title="Forward" aria-label="Forward">⏭</button>
+      <button class="tbtn" data-media="previous" title="Back" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2.2v12H6zM20 6v12l-9.5-6z"/></svg>
+      </button>
+      <button class="tbtn tbtn-primary" data-media="play" title="Play" aria-label="Play">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>
+      </button>
+      <button class="tbtn" data-media="pause" title="Pause" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z"/></svg>
+      </button>
+      <button class="tbtn" data-media="next" title="Forward" aria-label="Forward">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.8 6H18v12h-2.2zM4 6v12l9.5-6z"/></svg>
+      </button>
     </div>
 
     <div class="volume" id="volume" aria-label="Volume controls">

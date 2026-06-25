@@ -356,6 +356,7 @@ code {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 3px rgba(0,0,0,0.4);
   transition: filter 0.12s, transform 0.05s;
 }
+.tbtn svg { width: 20px; height: 20px; fill: currentColor; display: block; pointer-events: none; }
 .tbtn:hover { filter: brightness(1.15); border-color: var(--amber); }
 .tbtn:active, .tbtn.pressed { transform: translateY(1px); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
 .tbtn:disabled { opacity: 0.6; cursor: default; }
@@ -544,7 +545,8 @@ img { max-width: 100%; }
   .hero-title { white-space: normal; font-size: 1.35rem; }
   .hero-sub { white-space: normal; }
   .transport { gap: 0.45rem; }
-  .transport .tbtn { flex: 1; height: 50px; font-size: 1.3rem; }
+  .transport .tbtn { flex: 1; height: 50px; }
+  .transport .tbtn svg { width: 26px; height: 26px; }
   .volume { max-width: none; }
   .vbtn { width: 46px; height: 46px; }
 
